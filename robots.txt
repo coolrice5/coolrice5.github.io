@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /quiet.html
+
+Sitemap: https://coolrice5.github.io/sitemap.xml

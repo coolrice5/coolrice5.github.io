@@ -1,0 +1,3405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Vaultflip</title>
+<!-- CrazyGames SDK v3 -->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #05060d;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: none;
+    display: flex; align-items: center; justify-content: center; }
+  /* The playfield is a fixed 16:9 frame scaled to fit whatever screen it lands on.
+     Everything inside is measured against the frame, never the viewport, so the
+     game has identical proportions fullscreen, windowed, or on a phone. */
+  #frame { position: relative; overflow: hidden; background: #0a0a14;
+    width: min(100vw, calc(100vh * 16 / 9));
+    height: min(100vh, calc(100vw * 9 / 16));
+    container-type: size; }
+  #game { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #ui { position: absolute; inset: 0; pointer-events: none; }
+  .panel { position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1.8cqh; pointer-events: auto;
+    background: rgba(6,8,18,0.72); text-align: center; padding: 4cqh 4cqw; }
+  .hidden { display: none !important; }
+  /* Each size is declared twice: a viewport-based fallback, then the same value
+     in container units so it tracks the frame. Browsers without container query
+     units simply ignore the second declaration. */
+  h1 { color: #fff; font-size: clamp(34px, 9vw, 72px); font-size: 7.5cqw; font-weight: 800; letter-spacing: 2px;
+    text-shadow: 0 0 18px #23d5ff, 0 0 34px #ff2ea6; }
+  .sub { color: #9fb2d6; font-size: clamp(13px, 3.6vw, 18px); font-size: 2.1cqw; max-width: 84cqw;
+         line-height: 1.45; text-wrap: balance; }
+  .score-big { color: #fff; font-size: clamp(40px, 12vw, 96px); font-size: 10cqw; font-weight: 800; text-shadow: 0 0 20px #23d5ff; }
+  .stat { color: #7fe0ff; font-size: clamp(14px, 4vw, 20px); font-size: 2.3cqw; }
+  .best { color: #ffd35c; font-size: clamp(14px, 4vw, 20px); font-size: 2.3cqw; }
+  button { pointer-events: auto; cursor: pointer; border: none; border-radius: 14px;
+    font-weight: 800; font-size: clamp(16px, 4.4vw, 22px); font-size: 2.5cqw; padding: 1.8cqw 3.8cqw; color: #06121c;
+    background: linear-gradient(135deg, #23d5ff, #6ffcb5); box-shadow: 0 8px 30px rgba(35,213,255,0.35);
+    transition: transform .08s ease; letter-spacing: .5px; }
+  button:active { transform: scale(0.96); }
+  button.reward { background: linear-gradient(135deg, #ffd35c, #ff8a3d); box-shadow: 0 8px 30px rgba(255,138,61,0.4); color: #2a1400; }
+  button.ghost { background: transparent; color: #9fb2d6; box-shadow: none; border: 2px solid #2a3a5a; }
+  #hud { position: absolute; top: 1.6cqw; left: 0; right: 0; display: flex; justify-content: center;
+    gap: 2.4cqw; color: #fff; font-weight: 800; font-size: clamp(18px, 5vw, 28px); font-size: 3cqw;
+    text-shadow: 0 0 10px rgba(35,213,255,0.6); pointer-events: none; }
+  #hud .coins { color: #ffd35c; }
+  /* WORLD levels have no score and no tokens -- how far through you are is the
+     only thing worth reading, so the bar replaces the HUD entirely. */
+  #prog { position: absolute; top: 1.6cqw; left: 50%; transform: translateX(-50%);
+          width: 46cqw; height: 3.2cqw; min-height: 20px; border-radius: 999px;
+          background: rgba(6,14,26,0.72); border: 2px solid #23d5ff; overflow: hidden;
+          pointer-events: none; box-shadow: 0 0 18px rgba(35,213,255,0.35); }
+  #progFill { position: absolute; inset: 0 auto 0 0; width: 0;
+              background: linear-gradient(90deg, #23d5ff, #6ffcb5);
+              box-shadow: 0 0 16px #6ffcb5; transition: width .08s linear; }
+  #progPct { position: absolute; inset: 0; display: flex; align-items: center;
+             justify-content: center; font-size: 1.9cqw; font-weight: 900; color: #fff;
+             text-shadow: 0 1px 3px #000, 0 0 10px rgba(0,0,0,0.8); }
+  #mute, #pause { position: absolute; top: 1.4cqw; pointer-events: auto;
+    width: 4.6cqw; height: 4.6cqw; min-width: 34px; min-height: 34px;
+    padding: 0; font-size: 1.4cqw; letter-spacing: 0; border-radius: 10px; background: rgba(20,28,48,0.8); color: #9fb2d6; box-shadow: none; }
+  #mute  { right: 1.4cqw; }
+  #pause { left: 1.4cqw; font-weight: 900; }
+  .tag { color: #5a6b8c; font-size: 1.35cqw; letter-spacing: 1px; text-transform: uppercase; }
+  .wonRows { display: flex; flex-direction: column; gap: .5cqh; margin: .4cqh 0 1.4cqh; min-width: 26cqw; }
+  .wonRow { display: flex; justify-content: space-between; align-items: baseline; gap: 3cqw;
+            font-size: 1.9cqw; letter-spacing: .12em; }
+  .wonRow span { color: #6ea8d8; }
+  .wonRow b { color: #6ffcb5; font-weight: 900; text-shadow: 0 0 12px #6ffcb5; }
+  /* ---- mode-select menu: three cards, chunky outlined buttons ---- */
+  #menu { gap: 2.4cqw; }
+  .gameTitle { margin-bottom: .2cqh; }
+  .tagline { color: #7f96c4; font-size: 2cqw; letter-spacing: .42em; margin-bottom: 1.6cqh;
+             text-transform: uppercase; }
+  .cards { display: flex;
+ gap: 1.8cqw; justify-content: center; align-items: stretch;
+           flex-wrap: wrap; pointer-events: auto; }
+  .cards.small { gap: 1.4cqw; }
+  /* Dark cards with a neon rim, matching the playfield rather than fighting it.
+     The solid colour under each card is a "ledge" — on hover the card drops onto
+     it, so hovering reads as physically pressing the thing down. */
+  .card { background: linear-gradient(180deg, #0f1a2e, #0a1120); border-radius: 14px;
+          border: 3px solid #23d5ff; padding: 1.7cqw 1.8cqw; width: 20cqw; min-width: 150px;
+          display: flex; flex-direction: column; align-items: center; gap: 0.9cqw;
+          box-shadow: 0 7px 0 #10425e, 0 0 26px rgba(35,213,255,0.30);
+          transition: transform .09s ease, box-shadow .09s ease; }
+  .card:hover { transform: translateY(7px); box-shadow: 0 0 0 #10425e, 0 0 34px rgba(35,213,255,0.55); }
+  .card.hot { border-color: #ff2ea6; box-shadow: 0 7px 0 #6b1148, 0 0 30px rgba(255,46,166,0.40); }
+  .card.hot:hover { box-shadow: 0 0 0 #6b1148, 0 0 40px rgba(255,46,166,0.65); }
+  .cardName { color: #fff; font-weight: 900; font-size: 2.5cqw; letter-spacing: 1px;
+              text-shadow: 0 0 14px #23d5ff; }
+  .card.hot .cardName { text-shadow: 0 0 14px #ff2ea6; }
+  .cardArt { color: #fff; font-weight: 900; font-size: 4.2cqw; line-height: 1;
+             text-shadow: 0 0 20px #23d5ff, 0 0 34px #23d5ff; min-height: 4.4cqw; }
+  .card.hot .cardArt { color: #ffd35c; text-shadow: 0 0 20px #ffd35c, 0 0 36px #ff2ea6; }
+  .cardDesc { color: #9fb2d6; font-size: 1.45cqw; line-height: 1.5; text-align: center; }
+  .cardBtn { width: 100%; background: transparent; color: #23d5ff; border: 3px solid #23d5ff;
+             border-radius: 10px; font-size: 1.9cqw; padding: 0.85cqw 0; box-shadow: none;
+             letter-spacing: 1px; text-shadow: 0 0 10px rgba(35,213,255,0.6); }
+  .card.hot .cardBtn { color: #ff2ea6; border-color: #ff2ea6; text-shadow: 0 0 10px rgba(255,46,166,0.6); }
+  .card:hover .cardBtn { background: #23d5ff; color: #06121c; text-shadow: none; }
+  .card.hot:hover .cardBtn { background: #ff2ea6; color: #1a0410; }
+  .wideBtn { background: transparent; color: #9fb2d6; border: 3px solid #2a3f66; border-radius: 10px;
+             font-size: 1.65cqw; padding: 0.85cqw 2.4cqw; letter-spacing: 1px;
+             box-shadow: 0 5px 0 #16233f; transition: transform .09s ease, box-shadow .09s ease; }
+  .wideBtn:hover { transform: translateY(5px); box-shadow: 0 0 0 #16233f;
+                   color: #23d5ff; border-color: #23d5ff; }
+  .card.world { border-color: #6ffcb5; box-shadow: 0 7px 0 #11543a, 0 0 26px rgba(111,252,181,0.30); }
+  .card.world:hover { box-shadow: 0 0 0 #11543a, 0 0 36px rgba(111,252,181,0.60); }
+  .card.world .cardName { text-shadow: 0 0 14px #6ffcb5; }
+  .card.world .cardArt { color: #6ffcb5; text-shadow: 0 0 20px #6ffcb5; }
+  .card.world .cardBtn { color: #6ffcb5; border-color: #6ffcb5; text-shadow: 0 0 10px rgba(111,252,181,0.6); }
+  .card.world:hover .cardBtn { background: #6ffcb5; color: #06211a; text-shadow: none; }
+  #askBox { width: 62cqw; height: 12cqh; min-height: 74px; pointer-events: auto;
+            background: #060a16; color: #8ff0ff; border: 2px solid #23d5ff;
+            border-radius: 10px; padding: 1cqh 1.2cqw; font-family: Consolas, monospace;
+            font-size: 1.4cqw; resize: none; margin-bottom: 1.4cqh; }
+  #ask .sub { max-width: 62cqw; white-space: pre-line; }
+  .card.shop { border-color: #ffd35c; box-shadow: 0 0 26px rgba(255,211,92,.22); }
+  .card.shop .cardName { text-shadow: 0 0 14px #ffd35c; }
+  .card.shop .cardArt { color: #ffd35c; text-shadow: 0 0 20px #ffd35c; }
+  /* The glow has to come from a drop-shadow filter -- text-shadow does nothing
+     to an SVG path, so the icon would sit flat next to the glowing cards. */
+  .shopIcon svg { width: 5.6cqw; min-width: 44px; height: auto; display: block;
+                  filter: drop-shadow(0 0 8px #ffd35c) drop-shadow(0 0 18px rgba(255,211,92,.55)); }
+  .card.shop .cardDesc span { color: #ffd35c; font-weight: 900;
+                              text-shadow: 0 0 12px #ffd35c; }
+
+  .card.shop .cardBtn { color: #ffd35c; border-color: #ffd35c;
+                        text-shadow: 0 0 10px rgba(255,211,92,0.6); }
+  .card.shop:hover .cardBtn { background: #ffd35c; color: #2a2005; text-shadow: none; }
+  /* shop -- same shelf as the level select, different contents */
+  #shop { justify-content: flex-start; padding-top: 3cqh; }
+  .shopPurse { display: flex; align-items: center; gap: .7cqw; font-size: 2.4cqw;
+               font-weight: 900; color: #ffd35c; text-shadow: 0 0 16px #ffd35c; }
+  .shopPurse i { width: 2.2cqw; height: 2.2cqw; min-width: 17px; min-height: 17px;
+                 background: #ffd35c; transform: rotate(45deg); border-radius: 3px;
+                 box-shadow: 0 0 16px #ffd35c; }
+  .shopRow { display: flex; gap: 1.6cqw; width: 88cqw; overflow-x: auto; overflow-y: hidden;
+             pointer-events: auto; padding: .6cqh .2cqw 1.4cqh; scrollbar-width: thin;
+             scrollbar-color: #ffd35c #101c31; }
+  .shopRow::-webkit-scrollbar { height: 10px; }
+  .shopRow::-webkit-scrollbar-track { background: #101c31; border-radius: 6px; }
+  .shopRow::-webkit-scrollbar-thumb { background: #ffd35c; border-radius: 6px; }
+  .shopItem { flex: 0 0 auto; width: 15.5cqw; min-width: 124px; background: #0f1a2e;
+              border: 3px solid #2a3f66; border-radius: 16px; padding: 1.4cqh 1cqw;
+              display: flex; flex-direction: column; align-items: center; gap: .9cqh; }
+  /* the swatch IS the thing you are buying, so show the actual square */
+  .swatchBox { width: 5.2cqw; height: 5.2cqw; min-width: 40px; min-height: 40px;
+               display: flex; align-items: center; justify-content: center; }
+  .swatchBox i { width: 62%; height: 62%; border-radius: 4px; }
+  .shopName { font-size: 1.35cqw; font-weight: 900; letter-spacing: .08em; color: #fff;
+              min-height: 2.6em; display: flex; align-items: center; text-align: center; }
+  .shopCost { font-size: 1.5cqw; font-weight: 900; color: #ffd35c;
+              text-shadow: 0 0 12px #ffd35c; }
+  .shopBtn { width: 100%; font-size: 1.4cqw; padding: .9cqh 0; border-radius: 10px;
+             border: 3px solid #ffd35c; background: #0b1729; color: #ffd35c;
+             box-shadow: 0 5px 0 #6b5316; text-shadow: 0 0 10px #ffd35c;
+             transition: transform .09s ease, box-shadow .09s ease; }
+  .shopBtn:hover { transform: translateY(5px); box-shadow: 0 0 0 #6b5316;
+                   background: #ffd35c; color: #2a2005; text-shadow: none; }
+  .shopItem.owned { border-color: #6ffcb5; }
+  .shopItem.owned .shopBtn { border-color: #6ffcb5; color: #6ffcb5; box-shadow: 0 5px 0 #11543a;
+                             text-shadow: 0 0 10px #6ffcb5; }
+  .shopItem.owned .shopBtn:hover { background: #6ffcb5; color: #06211a; box-shadow: 0 0 0 #11543a; }
+  .shopItem.on { border-color: #6ffcb5; box-shadow: 0 0 26px rgba(111,252,181,.3); }
+  .shopItem.on .shopBtn { background: #6ffcb5; color: #06211a; text-shadow: none;
+                          box-shadow: 0 5px 0 #11543a; cursor: default; }
+  /* can't afford it yet -- greyed, but the price stays readable */
+  .shopItem.poor { border-color: #2a3f66; }
+  .shopItem.poor .shopName { color: #46587e; text-shadow: none; }
+  .shopItem.poor .shopBtn { border-color: #2a3f66; color: #46587e; box-shadow: 0 5px 0 #16233f;
+                            text-shadow: none; cursor: not-allowed; }
+  .shopItem.poor .shopBtn:hover { transform: none; background: #0b1729; color: #46587e;
+                                  box-shadow: 0 5px 0 #16233f; }
+  .shopTabs { display: flex; gap: .8cqw; margin-bottom: 1.4cqh; pointer-events: auto; }
+  .shopTab { font-size: 1.3cqw; padding: .8cqh 1.6cqw; border-radius: 999px;
+             border: 2px solid #2a3f66; background: #101c31; color: #8ea4c9;
+             letter-spacing: .1em; }
+  .shopTab.on { border-color: #ffd35c; color: #ffd35c; text-shadow: 0 0 10px #ffd35c; }
+  .shopItem.crate { justify-content: space-between; }
+  .crateArt { font-size: 3.4cqw; line-height: 1; text-shadow: 0 0 22px currentColor; }
+  .crateOdds { font-size: 1.05cqw; font-weight: 900; letter-spacing: .06em;
+               line-height: 1.5; text-align: center; }
+  .cratePity { color: #6ffcb5; font-size: .95cqw; margin-top: .4cqh; letter-spacing: .04em; }
+  .oddsRow { display: flex; align-items: center; gap: .35cqw; justify-content: flex-start;
+             white-space: nowrap; }
+  .oddsRow b { min-width: 3.3cqw; text-align: right; }
+  .oddsRow span { font-size: .95cqw; letter-spacing: .04em; }
+  .oddsDots { display: flex; gap: .18cqw; margin-left: auto; }
+  .oddsDots i { width: .8cqw; height: .8cqw; min-width: 6px; min-height: 6px;
+                border-radius: 2px; display: block; }
+  /* faded means you already have it -- the bright ones are what is left to find */
+  .oddsDots i.have { opacity: .28; }
+  .crateOdds { align-self: stretch; }
+
+  .shopItem.locked { border-color: #2a3f66; }
+  .shopItem.locked .shopName { color: #46587e; text-shadow: none; }
+  .shopItem.locked .shopBtn { border-color: #2a3f66; color: #46587e;
+                              box-shadow: 0 5px 0 #16233f; text-shadow: none;
+                              cursor: not-allowed; }
+  .shopItem.locked .shopBtn:hover { transform: none; background: #0b1729; color: #46587e;
+                                    box-shadow: 0 5px 0 #16233f; }
+  /* the reel */
+  .reelWin { position: relative; width: 74cqw; height: 15cqh; min-height: 96px;
+             overflow: hidden; border: 3px solid #ffd35c; border-radius: 14px;
+             background: #08111f; box-shadow: 0 0 26px rgba(255,211,92,.25);
+             margin-bottom: 2cqh; }
+  .reelStrip { display: flex; height: 100%; will-change: transform; }
+  .reelCell { flex: 0 0 120px; width: 120px; height: 100%; display: flex;
+              align-items: center; justify-content: center;
+              border-right: 3px solid #2a3f66; }
+  .reelPin { position: absolute; left: 50%; top: 0; bottom: 0; width: 4px;
+             transform: translateX(-50%); background: #fff;
+             box-shadow: 0 0 16px #fff; pointer-events: none; }
+  .reelResult { text-align: center; margin-bottom: 1.6cqh; }
+  .reelRarity { font-size: 1.6cqw; font-weight: 900; letter-spacing: .22em; }
+  .reelSkin { font-size: 3.4cqw; font-weight: 900; color: #fff;
+              text-shadow: 0 0 20px rgba(255,255,255,.5); }
+  .reelNote { font-size: 1.4cqw; color: #8ea4c9; margin-top: .6cqh; }
+  #reelDone { width: 26cqw; pointer-events: auto; }
+  /* ---- small frames ----
+     The frame keeps a 16:9 shape, so a phone held upright gives a short wide
+     strip -- about 375x211. Sizes here are already relative to the frame, but the
+     pixel floors were not: a 150px minimum per card meant three could not sit
+     side by side, so they wrapped into a pyramid. The floors come off below, and
+     because height is the binding constraint on a phone rather than width, the
+     shortest case drops the parts that are not load-bearing. */
+  @container (max-width: 760px) {
+    .panel { gap: 1.2cqh; padding: 3cqh 3cqw; }
+    .cards { gap: 1.4cqw; }
+    .card { min-width: 0; width: 27cqw; padding: 1.4cqw 1.1cqw; gap: 0.6cqw; }
+    .cardName { font-size: 3cqw; letter-spacing: 0; }
+    .cardArt { font-size: 4.4cqw; min-height: 4.6cqw; }
+    .cardDesc { font-size: 1.9cqw; line-height: 1.3; }
+    .cardBtn { font-size: 2.3cqw; padding: 0.9cqw 0; border-width: 2px; letter-spacing: 0; }
+    .shopIcon svg { width: 5.8cqw; min-width: 0; }
+    h1 { font-size: 7cqw; letter-spacing: 1px; }
+    .sub { font-size: 2.2cqw; max-width: 82cqw; }
+  }
+  @container (max-height: 460px) {
+    /* A short frame -- a laptop window, or a phone held sideways. The stack was
+       taller than the space, so centring pushed the instruction line hard against
+       the bottom edge with nothing under it. Everything tightens here so the line
+       keeps its breathing room instead of being dropped. */
+    .panel { gap: 0.9cqh; padding: 2.6cqh 3cqw; }
+    h1 { font-size: 5.6cqw; }
+    .tagline { font-size: 1.6cqw; margin-bottom: 0.6cqh; letter-spacing: .3em; }
+    .card { padding: 1.1cqw 1cqw; gap: 0.45cqw; }
+    .cardArt { font-size: 3.6cqw; min-height: 3.8cqw; }
+    .cardDesc { font-size: 1.6cqw; line-height: 1.25; }
+    .cardBtn { font-size: 2cqw; padding: 0.7cqw 0; }
+    .wideBtn { font-size: 1.8cqw; padding: 0.7cqw 1.8cqw; }
+    .sub { font-size: 1.8cqw; line-height: 1.35; }
+  }
+  @container (max-height: 300px) {
+
+    /* Upright phone. The card blurbs and the hint line go -- HOW TO PLAY still
+       carries the instructions -- so the three cards and their buttons fit. */
+    h1 { font-size: 6cqw; }
+    .cardDesc, #menu .sub, .tagline { display: none; }
+    .card { width: 28cqw; padding: 1.1cqw 0.9cqw; gap: 0.5cqw; }
+    .cardName { font-size: 3.2cqw; }
+    .cardArt { font-size: 4.8cqw; min-height: 5cqw; }
+    .cardBtn { font-size: 2.6cqw; padding: 1cqw 0; }
+    .wideBtn { font-size: 2.2cqw; padding: 0.9cqw 2cqw; }
+  }
+  /* level select -- a scrolling shelf of level cards */
+
+
+
+
+
+  #levels { justify-content: flex-start; padding-top: 3cqh; }
+  .wsBar { display: flex; align-items: center; gap: 1.5cqw; width: 88cqw; pointer-events: auto;
+           margin-bottom: 2.4cqh; }
+  .wsBack { width: 6cqw; min-width: 46px; height: 4.4cqw; min-height: 36px; padding: 0;
+            font-size: 2.6cqw; line-height: 1; border: 3px solid #23d5ff; background: #0f1a2e;
+            color: #23d5ff; border-radius: 12px; box-shadow: 0 5px 0 #10425e;
+            text-shadow: 0 0 12px #23d5ff; transition: transform .09s ease, box-shadow .09s ease; }
+  .wsBack:hover { transform: translateY(5px); box-shadow: 0 0 0 #10425e;
+                  background: #23d5ff; color: #06121c; text-shadow: none; }
+  .wsTitle { flex: 1; text-align: center; line-height: 1.05; }
+  .wsTitle span { display: block; font-size: 1.5cqw; letter-spacing: .34em; color: #6ea8d8; }
+  .wsTitle b { display: block; font-size: 3.4cqw; color: #fff; letter-spacing: .1em;
+               text-shadow: 0 0 22px #23d5ff, 0 0 44px rgba(35,213,255,.5); }
+  .wsRow { display: flex;
+ gap: 1.6cqw; width: 88cqw; overflow-x: auto; overflow-y: hidden;
+           pointer-events: auto; padding: .6cqh .2cqw 1.4cqh; scrollbar-width: thin;
+           scrollbar-color: #23d5ff #101c31; }
+  .wsRow::-webkit-scrollbar { height: 10px; }
+  .wsRow::-webkit-scrollbar-track { background: #101c31; border-radius: 6px; }
+  .wsRow::-webkit-scrollbar-thumb { background: #23d5ff; border-radius: 6px;
+                                    box-shadow: 0 0 12px #23d5ff; }
+  .wsCard { flex: 0 0 auto; width: 15.5cqw; min-width: 124px; background: #0f1a2e;
+            border: 3px solid #23d5ff; border-radius: 16px; padding: 1.4cqh 1cqw;
+            display: flex; flex-direction: column; align-items: center; gap: .9cqh;
+            box-shadow: 0 0 22px rgba(35,213,255,.25) inset, 0 0 26px rgba(35,213,255,.2); }
+  .wsDisc { width: 5.6cqw; height: 5.6cqw; min-width: 44px; min-height: 44px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 2.6cqw;
+            font-weight: 900; border: 3px solid #23d5ff; color: #23d5ff; background: #08111f;
+            text-shadow: 0 0 12px #23d5ff; box-shadow: 0 0 20px rgba(35,213,255,.45); }
+  /* drawn padlock -- the emoji one renders in colour and fights the grey card */
+  .wsLock { position: relative; width: 1.9cqw; height: 1.5cqw; min-width: 15px; min-height: 12px;
+            background: #46587e; border-radius: 3px; margin-top: 1cqw; }
+  .wsLock::before { content: ""; position: absolute; left: 50%; bottom: 100%;
+                    transform: translateX(-50%); width: 1.2cqw; height: 1cqw;
+                    min-width: 9px; min-height: 8px; border: 2px solid #46587e;
+                    border-bottom: none; border-radius: 7px 7px 0 0; }
+  .wsDiff { font-size: 1.15cqw; font-weight: 900; letter-spacing: .16em; padding: .35cqh .7cqw;
+            border: 2px solid #2a3f66; border-radius: 999px; color: #46587e; line-height: 1; }
+  /* Two lines are reserved whether the name needs them or not -- otherwise the
+     long names push their card taller than its neighbours. */
+  .wsName { min-height: 2.6em; display: flex; align-items: center; text-align: center;
+            font-size: 1.35cqw; font-weight: 900; letter-spacing: .08em; color: #fff;
+            line-height: 1.25;
+            text-shadow: 0 0 12px #23d5ff; }
+  .wsMeter { position: relative; width: 100%; height: 3cqh; min-height: 22px; border-radius: 8px;
+             background: #08111f; border: 2px solid #1d3c66; overflow: hidden; }
+  .wsFill { position: absolute; inset: 0 auto 0 0; background: #23d5ff;
+            box-shadow: 0 0 18px #23d5ff; }
+  .wsPct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+           font-size: 1.5cqw; font-weight: 900; color: #fff; text-shadow: 0 1px 3px #000; }
+  .wsGo { width: 100%; font-size: 1.5cqw; padding: .9cqh 0; border-radius: 10px;
+          border: 3px solid #23d5ff; background: #0b1729; color: #23d5ff;
+          box-shadow: 0 5px 0 #10425e; text-shadow: 0 0 10px #23d5ff;
+          transition: transform .09s ease, box-shadow .09s ease; }
+  .wsGo:hover { transform: translateY(5px); box-shadow: 0 0 0 #10425e;
+                background: #23d5ff; color: #06121c; text-shadow: none; }
+  /* cleared -- mint */
+  .wsCard.done { border-color: #6ffcb5; box-shadow: 0 0 22px rgba(111,252,181,.25) inset, 0 0 26px rgba(111,252,181,.2); }
+  .wsCard.done .wsDisc { border-color: #6ffcb5; color: #06211a; background: #6ffcb5;
+                         text-shadow: none; box-shadow: 0 0 22px rgba(111,252,181,.7); }
+  .wsCard.done .wsName { text-shadow: 0 0 12px #6ffcb5; }
+  .wsCard.done .wsFill { background: #6ffcb5; box-shadow: 0 0 18px #6ffcb5; }
+  .wsCard.done .wsGo { border-color: #6ffcb5; color: #6ffcb5; box-shadow: 0 5px 0 #11543a;
+                       text-shadow: 0 0 10px #6ffcb5; }
+  .wsCard.done .wsGo:hover { background: #6ffcb5; color: #06211a; box-shadow: 0 0 0 #11543a; }
+  /* a built-in level you have replaced -- gold edge, still numbered */
+  .wsCard.edited { border-color: #ffd35c; }
+  .wsCard.edited .wsDisc { border-color: #ffd35c; color: #ffd35c; text-shadow: 0 0 12px #ffd35c; }
+  .wsCard.edited .wsName { text-shadow: 0 0 12px #ffd35c; }
+  /* your own levels -- gold, always unlocked */
+
+  .wsCard.mine { border-color: #ffd35c; box-shadow: 0 0 22px rgba(255,211,92,.2) inset, 0 0 26px rgba(255,211,92,.18); }
+  .wsCard.mine .wsDisc { border-color: #ffd35c; color: #ffd35c; text-shadow: 0 0 12px #ffd35c;
+                         box-shadow: 0 0 20px rgba(255,211,92,.45); }
+  .wsCard.mine .wsName { text-shadow: 0 0 12px #ffd35c; }
+  .wsCard.mine .wsFill { background: #ffd35c; box-shadow: 0 0 18px #ffd35c; }
+  .wsCard.mine .wsGo { border-color: #ffd35c; color: #ffd35c; box-shadow: 0 5px 0 #6b5316;
+                       text-shadow: 0 0 10px #ffd35c; }
+  .wsCard.mine .wsGo:hover { background: #ffd35c; color: #2a2005; box-shadow: 0 0 0 #6b5316; }
+  .wsDel { background: none; border: none; box-shadow: none; color: #6b7fa3;
+           font-size: 1.1cqw; padding: 0; text-decoration: underline; letter-spacing: .06em; }
+  .wsDel:hover { color: #ff7a9c; }
+  /* locked -- grey, inert */
+  .wsCard.lock { border-color: #2a3f66; box-shadow: none; }
+  .wsCard.lock .wsDisc { border-color: #2a3f66; color: #46587e; text-shadow: none; box-shadow: none; }
+  .wsCard.lock .wsName { color: #46587e; text-shadow: none; }
+  .wsCard.lock .wsFill { background: #2a3f66; box-shadow: none; }
+  .wsCard.lock .wsPct { color: #46587e; text-shadow: none; }
+  .wsCard.lock .wsGo { border-color: #2a3f66; color: #46587e; box-shadow: 0 5px 0 #16233f;
+                       text-shadow: none; cursor: not-allowed; }
+  .wsCard.lock .wsGo:hover { transform: none; background: #0b1729; color: #46587e;
+                             box-shadow: 0 5px 0 #16233f; }
+</style>
+</head>
+<body>
+<div id="frame">
+<canvas id="game"></canvas>
+<div id="ui">
+  <div id="hud" class="hidden"><span id="hudScore">0</span><span class="coins"><span id="hudCoins">0</span> TOKENS</span></div>
+  <div id="prog" class="hidden"><div id="progFill"></div><span id="progPct">0%</span></div>
+  <button id="mute" class="hidden">SND</button>
+  <button id="pause" class="hidden">II</button>
+
+  <div id="menu" class="panel">
+    <!-- The name has to appear in the game itself, not just the browser tab --
+         the store listing is checked against what is on screen. -->
+    <h1 class="gameTitle">VAULTFLIP</h1>
+    <div class="tagline">SELECT A MODE</div>
+    <div class="cards">
+      <div class="card world">
+        <div class="cardName">WORLD</div>
+        <div class="cardArt">&#9873;</div>
+        <div class="cardDesc">reach the finish<br>to clear each level</div>
+        <button class="cardBtn" id="modeWorld">SELECT</button>
+      </div>
+      <div class="card hot">
+        <div class="cardName">ENDLESS</div>
+        <div class="cardArt" id="bestArt">0</div>
+        <div class="cardDesc">go as far as possible<br>and set a highscore</div>
+        <button class="cardBtn" id="modeNormal">START</button>
+      </div>
+      <div class="card shop">
+        <div class="cardName">SHOP</div>
+        <div class="cardArt shopIcon">
+          <!-- Drawn rather than an emoji: a colour emoji fights the neon palette,
+               the same way the padlock did on the locked level cards. -->
+          <svg viewBox="0 0 64 48" aria-hidden="true">
+            <path d="M6 16 L12 5 H52 L58 16 Z" fill="none" stroke="currentColor" stroke-width="3"
+                  stroke-linejoin="round"/>
+            <path d="M6 16 h52 v27 a2 2 0 0 1 -2 2 H8 a2 2 0 0 1 -2 -2 Z" fill="none"
+                  stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M19 16 v-11 M32 16 v-11 M45 16 v-11" stroke="currentColor" stroke-width="2.4"
+                  opacity=".65"/>
+            <path d="M24 45 v-16 h16 v16" fill="none" stroke="currentColor" stroke-width="3"
+                  stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="cardDesc"><span id="walletArt">0</span> tokens<br>to spend on a new look</div>
+        <button class="cardBtn" id="modeShop">OPEN</button>
+      </div>
+    </div>
+    <div class="cards small">
+      <button class="wideBtn" id="soundBtn">SOUND: ON</button>
+      <button class="wideBtn" id="howBtn">HOW TO PLAY</button>
+    </div>
+    <div class="sub" id="howText">Tap, click, or press <b>Space</b> to flip gravity. Dodge the blocks, grab the tokens.</div>
+  </div>
+
+  <div id="paused" class="panel hidden">
+    <div class="tag">Paused</div>
+    <div class="score-big" id="pauseScore">0</div>
+    <button id="resumeBtn">RESUME</button>
+    <button id="pauseMenuBtn" class="ghost">Quit to menu</button>
+  </div>
+
+  <!-- Own dialog rather than window.prompt/confirm: this page runs in a sandboxed
+       frame on the web, where the browser blocks native popups outright. Pressing
+       a button that called one simply did nothing. -->
+  <div id="ask" class="panel hidden">
+    <div class="tag" id="askTag">PASTE LEVEL CODE</div>
+    <div class="sub" id="askMsg"></div>
+    <textarea id="askBox" spellcheck="false" placeholder="paste here"></textarea>
+    <button id="askOk">OK</button>
+    <button id="askNo" class="ghost">Cancel</button>
+  </div>
+
+  <div id="shop" class="panel hidden">
+    <div class="wsBar">
+      <button class="wsBack" id="shopBack">&#8592;</button>
+      <div class="wsTitle"><span>SPEND YOUR TOKENS</span><b>SHOP</b></div>
+      <div class="shopPurse"><i></i><span id="purse">0</span></div>
+    </div>
+    <div class="shopTabs">
+      <button class="shopTab on" id="tabCrates">CRATES</button>
+      <button class="shopTab" id="tabKit">COLLECTION</button>
+    </div>
+    <div class="shopRow" id="shopGrid"></div>
+  </div>
+
+  <div id="reel" class="panel hidden">
+    <div class="tag" id="reelName">CRATE</div>
+    <div class="reelWin" id="reelWin">
+      <div class="reelStrip" id="reelStrip"></div>
+      <div class="reelPin"></div>
+    </div>
+    <div class="reelResult hidden" id="reelResult">
+      <div class="reelRarity" id="reelRarity">RARE</div>
+      <div class="reelSkin" id="reelSkin">ICE</div>
+      <div class="reelNote" id="reelNote"></div>
+    </div>
+    <button class="shopBtn hidden" id="reelDone">TAKE IT</button>
+  </div>
+
+  <div id="levels" class="panel hidden">
+
+
+    <div class="wsBar">
+      <button class="wsBack" id="lvlBack">&#8592;</button>
+      <div class="wsTitle"><span>CLASSIC</span><b>WORLD 1</b></div>
+    </div>
+    <div class="wsRow" id="lvlGrid"></div>
+  </div>
+
+  <div id="won" class="panel hidden">
+    <div class="tag">Level Complete</div>
+    <div class="score-big" id="wonName">1</div>
+    <div class="wonRows">
+      <div class="wonRow"><span>DIFFICULTY</span><b id="wonDiff">EASY</b></div>
+      <div class="wonRow"><span>ATTEMPTS</span><b id="wonAttempts">1</b></div>
+      <div class="wonRow"><span>TIME</span><b id="wonTime">0:00</b></div>
+      <div class="wonRow"><span>PROGRESS</span><b>100%</b></div>
+    </div>
+    <button id="wonNext">NEXT LEVEL</button>
+    <button id="wonMenu" class="ghost">Level select</button>
+  </div>
+
+  <div id="over" class="panel hidden">
+    <div class="tag">Game Over</div>
+    <div class="score-big" id="finalScore">0</div>
+    <div class="stat"><span id="finalCoins">0</span> tokens collected</div>
+    <div class="best">Best: <span id="overBest">0</span></div>
+    <button id="reviveBtn" class="reward hidden">REVIVE (Watch Ad)</button>
+    <button id="retryBtn">PLAY AGAIN</button>
+    <button id="menuBtn" class="ghost">Menu</button>
+  </div>
+</div>
+</div><!-- /frame -->
+
+<script>
+"use strict";
+(function () {
+  // ---------- CrazyGames SDK (with safe local fallback) ----------
+  var CG = { ready: false };
+  // Fallback mock so the game runs when opened locally (no SDK on the page).
+  var mockSDK = {
+    init: function () { return Promise.resolve(); },
+    game: { gameplayStart: function () {}, gameplayStop: function () {}, happytime: function () {} },
+    ad: {
+      requestAd: function (type, cb) {
+        // Simulate a short ad locally; real platform replaces this.
+        if (cb && cb.adStarted) cb.adStarted();
+        setTimeout(function () { if (cb && cb.adFinished) cb.adFinished(); }, 600);
+      }
+    }
+  };
+  // Resolve the SDK at CALL time, not boot time. The script tag is async, so the
+  // real SDK may arrive after this file runs — and if it never arrives (offline,
+  // blocked, slow CDN) we silently fall back to the mock and the game still plays.
+  function sdk() {
+    return (window.CrazyGames && window.CrazyGames.SDK) || mockSDK;
+  }
+  // ---------- Where progress lives ----------
+  // Through the CrazyGames data module when there is one, so a player's levels,
+  // skins and tokens follow their account instead of being stranded in whichever
+  // browser they happened to play in. localStorage everywhere else, and if both
+  // refuse -- a locked-down browser, a sandboxed frame -- the game simply plays
+  // without remembering, rather than breaking.
+  // Only once init has resolved. Calling the data module before that makes the
+  // SDK log an error for every read and write, which is noise in the console and
+  // tells the player nothing. One failure switches it off for the session.
+  function sdkData() {
+    if (!CG.ok) return null;
+    try {
+      var d = sdk().data;
+      if (d && typeof d.getItem === "function") return d;
+    } catch (e) { CG.ok = false; }
+    return null;
+  }
+  var store = {
+    get: function (k) {
+      var d = sdkData();
+      if (d) { try { return d.getItem(k); } catch (e) { CG.ok = false; } }
+      try { return localStorage.getItem(k); } catch (e) {}
+      return null;
+    },
+    set: function (k, v) {
+      var d = sdkData();
+      if (d) { try { d.setItem(k, v); return; } catch (e) { CG.ok = false; } }
+      try { localStorage.setItem(k, v); } catch (e) {}
+    },
+    remove: function (k) {
+      var d = sdkData();
+      if (d) { try { d.removeItem(k); return; } catch (e) { CG.ok = false; } }
+      try { localStorage.removeItem(k); } catch (e) {}
+    }
+  };
+
+  function initSDK() {
+
+    var p;
+    try { p = sdk().init(); } catch (e) { p = null; }
+    try {
+      (p && p.then ? p : Promise.resolve()).then(
+        function () {
+          CG.ready = true; CG.ok = true;
+          reloadProgress();
+          // Honour the site's audio setting, now and whenever it changes.
+          flushGameplayStart();
+          try { applySdkSettings(sdk().game.settings); } catch (e) {}
+          try { sdk().game.addSettingsChangeListener(applySdkSettings); } catch (e) {}
+        },
+        function () { CG.ready = true; CG.ok = false; });
+    } catch (e) { CG.ready = true; CG.ok = false; }
+  }
+  // Gameplay start is the event the platform uses to decide the game reached a
+  // playable state, so it must not be lost. If the player hits START before the
+  // SDK has finished initialising the call throws and would vanish -- so the fact
+  // that play began is remembered and sent the moment the SDK is up.
+  var playPending = false, playLive = false;
+  function sdkGameplayStart() {
+    playLive = true;
+    try { sdk().game.gameplayStart(); playPending = false; }
+    catch (e) { playPending = true; }
+  }
+  function sdkGameplayStop() {
+    playLive = false; playPending = false;
+    try { sdk().game.gameplayStop(); } catch (e) {}
+  }
+  // Called once init resolves: if play is already underway, say so now.
+  function flushGameplayStart() {
+    if (!playLive) return;
+    try { sdk().game.gameplayStart(); playPending = false; } catch (e) {}
+  }
+  function requestAd(type, onStart, onDone) {
+    var finished = false, started = false;
+    function done() { if (finished) return; finished = true; onDone && onDone(); }
+    try {
+      sdk().ad.requestAd(type, {
+        adStarted: function () { started = true; onStart && onStart(); },
+        adFinished: function () { done(); },
+        adError: function () { done(); }
+      });
+    } catch (e) { done(); return; }
+    // If the ad never even starts (SDK missing/uninitialised/blocked), don't make
+    // the player wait — bail out quickly. Once it HAS started, allow a long ad.
+    setTimeout(function () { if (!started) done(); }, 4000);
+    setTimeout(done, 45000);
+  }
+
+  // ---------- Canvas / responsive ----------
+  var canvas = document.getElementById("game");
+  var ctx = canvas.getContext("2d");
+  var DPR = Math.min(window.devicePixelRatio || 1, 2);
+  // The game always thinks it is running at this fixed virtual resolution. The
+  // frame is locked to the same 16:9 shape in CSS, so we just scale the whole
+  // drawing surface to fit. Every distance, size and speed below is therefore
+  // identical on a phone, a window, or a 4K fullscreen display.
+  var VW = 960, VH = 540;
+  var W = VW, H = VH, viewScale = 1;
+  function resize() {
+    var cw = canvas.clientWidth || VW, ch = canvas.clientHeight || VH;
+    canvas.width = Math.round(cw * DPR);
+    canvas.height = Math.round(ch * DPR);
+    W = VW; H = VH;
+    // cw/VW and ch/VH match because the frame is locked to 16:9; take the
+    // smaller so a rounding difference can never crop the playfield.
+    viewScale = Math.min(cw / VW, ch / VH);
+    ctx.setTransform(viewScale * DPR, 0, 0, viewScale * DPR, 0, 0);
+  }
+  // Resizing must recompute the playfield geometry too, not just the bitmap —
+  // otherwise the floor/ceiling rails stay at their old positions and the level
+  // looks cut off. Also re-seats the player on its surface at the new size.
+  function onResize() {
+    resize();
+    layout();
+    if (player) {
+      player.size = P_SIZE;
+      player.x = W * 0.24;
+      player.y = player.onFloor ? GROUND - P_SIZE : CEIL;
+    }
+  }
+  window.addEventListener("resize", onResize);
+  // An embedding frame can change size without ever firing window.resize, so
+  // watch the canvas element itself.
+  try {
+    if (window.ResizeObserver) new window.ResizeObserver(onResize).observe(canvas);
+  } catch (e) {}
+
+  // ---------- Audio (WebAudio blips, mutable for ads) ----------
+  // ---------- Audio ----------
+  // Everything is generated in the browser -- no audio files, so the game stays a
+  // single 150KB page and loads instantly. Two buses hang off one master gain, so
+  // muting is a single value change rather than chasing individual voices.
+  var audio = { ctx: null, muted: false, adMuted: false, sdkMuted: false,
+                master: null, mus: null, sfx: null, noise: null };
+  function ac() {
+    if (!audio.ctx) {
+      try {
+        audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var c = audio.ctx;
+        audio.master = c.createGain();
+        audio.master.gain.value = 1;
+        audio.master.connect(c.destination);
+        audio.mus = c.createGain();                 // music sits under the effects
+        audio.mus.gain.value = 0.34;
+        audio.mus.connect(audio.master);
+        audio.sfx = c.createGain();
+        audio.sfx.gain.value = 1;
+        audio.sfx.connect(audio.master);
+        // one second of noise, reused for every hat and every crash
+        var n = c.createBuffer(1, c.sampleRate, c.sampleRate), d = n.getChannelData(0);
+        for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        audio.noise = n;
+      } catch (e) { audio.ctx = null; }
+    }
+    return audio.ctx;
+  }
+  // Three things can silence the game: the player's own toggle, an ad playing,
+  // and CrazyGames itself. The platform's setting wins over the in-game toggle --
+  // their docs are explicit that a player must not be able to switch audio back
+  // on from inside the game while the site has it muted.
+  function quiet() { return audio.muted || audio.adMuted || audio.sdkMuted; }
+  function applyMute() {
+    if (!audio.master) return;
+    try { audio.master.gain.value = quiet() ? 0 : 1; } catch (e) {}
+  }
+  function soundOff() { return audio.muted || audio.sdkMuted; }
+  function refreshSoundLabels() {
+    var a = document.getElementById("soundBtn"), b = document.getElementById("mute");
+    if (a) a.textContent = "SOUND: " + (soundOff() ? "OFF" : "ON");
+    if (b) b.textContent = soundOff() ? "MUTE" : "SND";
+  }
+  // Called once when the SDK comes up and again whenever the site changes it.
+  function applySdkSettings(s) {
+    audio.sdkMuted = !!(s && s.muteAudio);
+    applyMute();
+    refreshSoundLabels();
+    if (soundOff()) music.stop();
+    else if (!music.on) music.start(state === STATE.PLAY ? 1 : 0);
+  }
+
+  // A single voice: oscillator, envelope, optional pitch slide and filter.
+  function tone(o) {
+    var c = ac(); if (!c || quiet()) return;
+    try {
+      var t = (o.at || c.currentTime), osc = c.createOscillator(), g = c.createGain();
+      osc.type = o.type || "square";
+      osc.frequency.setValueAtTime(o.f, t);
+      if (o.to) osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.to), t + (o.dur || 0.12));
+      var out = g;
+      if (o.filter) {
+        var flt = c.createBiquadFilter();
+        flt.type = "lowpass";
+        flt.frequency.setValueAtTime(o.filter, t);
+        g.connect(flt); out = flt;
+      }
+      var peak = o.vol == null ? 0.06 : o.vol;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + (o.atk || 0.008));
+      g.gain.exponentialRampToValueAtTime(0.0001, t + (o.dur || 0.12));
+      osc.connect(g); out.connect(o.bus || audio.sfx);
+      osc.start(t); osc.stop(t + (o.dur || 0.12) + 0.02);
+    } catch (e) {}
+  }
+  function hit(o) {                                  // noise burst: hats, crashes
+    var c = ac(); if (!c || quiet()) return;
+    try {
+      var t = (o.at || c.currentTime), s = c.createBufferSource(), g = c.createGain(), flt = c.createBiquadFilter();
+      s.buffer = audio.noise;
+      flt.type = o.lp ? "lowpass" : "highpass";
+      flt.frequency.value = o.lp || o.hp || 6000;
+      g.gain.setValueAtTime(o.vol == null ? 0.05 : o.vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + (o.dur || 0.05));
+      s.connect(flt); flt.connect(g); g.connect(o.bus || audio.sfx);
+      s.start(t); s.stop(t + (o.dur || 0.05) + 0.02);
+    } catch (e) {}
+  }
+  // kept for anything still calling the old helper
+  function blip(freq, dur, type, vol) { tone({ f: freq, dur: dur, type: type, vol: vol }); }
+
+  var sfx = {
+    flip:  function () { tone({ f: 420, to: 760, dur: 0.09, type: "square", vol: 0.05 }); },
+    coin:  function () {
+      tone({ f: 880, dur: 0.06, type: "triangle", vol: 0.06 });
+      tone({ f: 1320, dur: 0.1, type: "triangle", vol: 0.05, at: (audio.ctx ? audio.ctx.currentTime + 0.05 : 0) });
+    },
+    dead:  function () {
+      tone({ f: 220, to: 55, dur: 0.5, type: "sawtooth", vol: 0.09, filter: 900 });
+      hit({ hp: 300, dur: 0.3, vol: 0.05 });
+    },
+    rare:  function () { arpUp([740, 990, 1320], "triangle", 0.07); },
+    click: function () { tone({ f: 660, dur: 0.05, type: "square", vol: 0.035 }); },
+    tick:  function () { tone({ f: 1200, dur: 0.03, type: "square", vol: 0.03 }); },
+    // Level complete: a rising major flourish, unmistakably a win.
+    win:   function () { arpUp([523, 659, 784, 1047], "triangle", 0.08, 90); },
+    // Crate reveal. The rarer it is, the higher and longer the sting, so the
+    // sound tells you what you got before you have read the card.
+    reveal: function (rarity) {
+      var sets = {
+        COMMON:    [392, 523],
+        RARE:      [523, 659, 784],
+        EPIC:      [523, 698, 880, 1047],
+        LEGENDARY: [523, 784, 1047, 1319],
+        MYTHIC:    [523, 784, 1047, 1319, 1568]
+      };
+      arpUp(sets[rarity] || sets.COMMON, "triangle", 0.085, 85);
+      if (rarity === "LEGENDARY" || rarity === "MYTHIC") hit({ hp: 4000, dur: 0.7, vol: 0.04 });
+    }
+  };
+  function arpUp(notes, type, vol, gap) {
+    var c = ac(); if (!c || quiet()) return;
+    var t = c.currentTime, g = (gap || 70) / 1000;
+    for (var i = 0; i < notes.length; i++) {
+      tone({ f: notes[i], dur: i === notes.length - 1 ? 0.3 : 0.11, type: type, vol: vol, at: t + i * g });
+    }
+  }
+
+  // ---------- Music ----------
+  // Four bars of A minor, scheduled a little ahead of the clock. Timers are not
+  // accurate enough to place notes on, so the loop only decides WHAT plays and
+  // hands the audio clock the exact times.
+  var CHORDS = [
+    { root: 110.00, arp: [220.00, 261.63, 329.63, 440.00] },   // Am
+    { root:  87.31, arp: [174.61, 220.00, 261.63, 349.23] },   // F
+    { root: 130.81, arp: [261.63, 329.63, 392.00, 523.25] },   // C
+    { root:  98.00, arp: [196.00, 246.94, 293.66, 392.00] }    // G
+  ];
+  var music = {
+    on: false, timer: null, step: 0, next: 0, level: 0,   // level 0 = menu, 1 = playing
+    bpm: 124,
+    start: function (level) {
+      this.level = level || 0;
+      var c = ac(); if (!c || this.on) { return; }
+      this.on = true; this.step = 0; this.next = c.currentTime + 0.1;
+      var self = this;
+      this.timer = setInterval(function () { self.tick(); }, 25);
+    },
+    stop: function () {
+      this.on = false;
+      if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    },
+    setLevel: function (n) { this.level = n; },
+    tick: function () {
+      var c = ac(); if (!c || !this.on) return;
+      var stepDur = 60 / this.bpm / 4;               // sixteenths
+      while (this.next < c.currentTime + 0.12) {
+        this.play(this.step, this.next, stepDur);
+        this.next += stepDur;
+        this.step = (this.step + 1) % 64;            // four bars
+      }
+    },
+    play: function (s, t, dur) {
+      if (quiet()) return;
+      var bar = Math.floor(s / 16), inBar = s % 16, ch = CHORDS[bar];
+      var full = this.level > 0;
+      // bass on the beat
+      if (inBar % 4 === 0) {
+        tone({ f: ch.root, to: ch.root * 0.995, dur: dur * 3.2, type: "sawtooth", at: t,
+               vol: full ? 0.10 : 0.07, filter: full ? 520 : 340, bus: audio.mus, atk: 0.02 });
+      }
+      // arpeggio, sixteenths, climbing and falling across the bar
+      var pat = [0, 1, 2, 3, 2, 1, 2, 3, 0, 1, 2, 3, 3, 2, 1, 0];
+      tone({ f: ch.arp[pat[inBar]] * (full ? 2 : 1), dur: dur * 0.9, type: full ? "square" : "triangle",
+             at: t, vol: full ? 0.032 : 0.022, bus: audio.mus, filter: 2600 });
+      if (!full) return;                              // menus stay sparse
+      // kick
+      if (inBar === 0 || inBar === 6 || inBar === 8 || inBar === 14) {
+        tone({ f: 150, to: 45, dur: 0.16, type: "sine", vol: 0.16, bus: audio.mus, atk: 0.004, at: t });
+      }
+      // hats, with the offbeats quieter
+      if (inBar % 2 === 0) hit({ hp: 7000, dur: 0.03, vol: inBar % 4 === 0 ? 0.028 : 0.016, at: t, bus: audio.mus });
+      // a crash to open each four-bar cycle
+      if (s === 0) hit({ hp: 3000, dur: 0.6, vol: 0.035, at: t, bus: audio.mus });
+    }
+  };
+
+  // ---------- Game state ----------
+  var STATE = { MENU: 0, PLAY: 1, DEAD: 2, PAUSED: 3, WIN: 4 };
+  var state = STATE.MENU;
+  var best = 0;
+  try { best = parseInt(store.get("vaultflip_best") || "0", 10) || 0; } catch (e) {}
+
+  var deathCount = 0;          // for midgame ad frequency cap
+  // Midgame ads are paced by the clock, not by a count of deaths. Counting deaths
+  // looked reasonable until the levels got hard: dying every twelve seconds meant
+  // an ad every thirty-six, which is the sort of thing that fails review. The
+  // clock starts at load so the opening minutes are always clear.
+  var AD_MIN_GAP = 180000;     // three minutes between midgame ads
+  var AD_MIN_DEATHS = 2;       // and never on the first death of a session
+  var lastAdAt = Date.now();
+  var usedReviveThisRun = false;
+
+  var player, obstacles, coins, platforms, decors, speed, distance, coinCount, spawnTimer, gravSign, flipAnim, shake;
+  var particles, popups, runTime;
+  var laneBalance = 0;   // + means ceiling is over-represented, - means floor is
+  var trail = null;      // teleport streak left behind by the last flip
+
+  // Difficulty curve: starts slow and calm, gets progressively faster.
+  var SPEED_START = 600;   // px/sec at the moment you press PLAY — no easy warm-up
+  var SPEED_MAX   = 1950;  // hard ceiling so it stays humanly playable
+  var SPEED_ACC   = 34;    // px/sec gained per second survived
+
+  var GROUND = 0, CEIL = 0, LANE = 0, TILE = 0; // computed from H
+  var P_SIZE = 0;
+
+  function layout() {
+    LANE = Math.max(46, Math.min(90, H * 0.11));   // thickness of floor/ceiling bars
+    TILE = LANE / 2;                                // grid unit every block snaps to
+    CEIL = LANE;
+    GROUND = H - LANE;
+    P_SIZE = Math.max(22, Math.min(40, H * 0.055));
+    // Flush against the right edge: the wall closes off the very end of the view,
+    // and the square runs the whole width of the screen into it.
+    FINISH_PARK = W - FINISH_W;
+  }
+
+  function resetRun() {
+    layout();
+    // speed is in PIXELS PER SECOND (movement is dt-scaled below)
+    speed = SPEED_START;                 // gentle opening, ramps up over the run
+    runTime = 0;
+    sinceObstacle = 240;                 // brief breather before the first block
+    laneBalance = 0;
+    customCol = 0; customDone = false; customX = W;   // authored level starts off-screen
+    finishGate = null; win = null;
+    distance = 0; coinCount = 0;
+    gravSign = 1;                 // 1 = pulled down (on floor), -1 = up (on ceiling)
+    flipAnim = 0;
+    shake = 0;
+    obstacles = []; coins = []; platforms = []; decors = [];
+    particles = [];
+    popups = [];
+    buildLayers();
+    spawnTimer = 0;
+    usedReviveThisRun = false;
+    // level 0 = in the region below any platform, 1 = above it. onFloor is the
+    // direction gravity pulls, which is what the flip button toggles.
+    player = { x: W * 0.24, y: GROUND - P_SIZE, size: P_SIZE, onFloor: true, level: 0,
+               onPlat: false, glideT: 0, glideFrom: 0 };
+  }
+
+  // ---------- Juice: particles ----------
+  function burst(x, y, color, n, power) {
+    for (var i = 0; i < n; i++) {
+      var a = Math.random() * Math.PI * 2, s = (0.4 + Math.random()) * (power || 4);
+      particles.push({ x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+                       life: 1, size: 2 + Math.random() * 4, color: color });
+    }
+  }
+
+  // ---------- Platforms (the third surface) ----------
+  function platformAt(x) {
+    for (var i = 0; i < platforms.length; i++) {
+      var p = platforms[i];
+      if (x + P_SIZE > p.x && x < p.x + p.w) return p;
+    }
+    return null;
+  }
+  // Where the player's body sits this frame. With no platform overhead it is the
+  // usual floor-or-ceiling snap. With one, the corridor is split in two and the
+  // player rests against whichever side of the platform their region faces.
+  function placePlayer(dt) {
+    player.size = P_SIZE;
+    var p = platformAt(player.x), target;
+    if (!p) {
+      // open corridor — gravity alone decides, and that also re-establishes level
+      player.level = player.onFloor ? 0 : 1;
+      target = player.onFloor ? GROUND - player.size : CEIL;
+    } else if (player.level === 1) {
+      target = player.onFloor ? p.y - player.size : CEIL;      // above the platform
+    } else {
+      target = player.onFloor ? GROUND - player.size : p.y + p.th;  // below it
+    }
+    // Running off the END of a platform is the one position change the player
+    // never asked for, and snapping it instantly teleports them a third of the
+    // screen — which reads as a glitch. Glide it instead. Deliberate flips stay
+    // instant, so the controls keep their arcade snap.
+    if (player.onPlat && !p) { player.glideFrom = player.y; player.glideT = 1; }
+    player.onPlat = !!p;
+    if (player.glideT > 0) {
+      if (dt) player.glideT = Math.max(0, player.glideT - dt / 0.12);
+      var k = player.glideT * player.glideT;          // ease out
+      player.y = target + (player.glideFrom - target) * k;
+    } else {
+      player.y = target;
+    }
+  }
+
+  function flip() {
+    if (state !== STATE.PLAY) return;
+    gravSign = -gravSign;
+    player.onFloor = !player.onFloor;
+    player.glideT = 0;      // a deliberate flip takes control back instantly
+    // Spider-style teleport streak: mark where the body left so the jump reads
+    // as a dash across the corridor instead of the sprite blinking out.
+    trail = { x: player.x, w: player.size, from: player.y, life: 1 };
+    flipAnim = 1;
+    sfx.flip();
+  }
+
+  // ---------- Custom levels (built in editor.html) ----------
+  // A level is three base-36 chars per column: floor height, ceiling height,
+  // token flag — all in TILE units, matching the editor's grid exactly.
+  var customLevel = null, customCol = 0, customDone = false, finishGate = null;
+  var runSpeed = 0;                 // the pace the square keeps while the world is held
+  var FINISH_W = 16;                // thickness of the end wall
+  var FINISH_PARK = 0;              // screen x the end wall stops at, set in layout()
+  // A level code is  V1.<speed>.<react*100>.<3 chars per column>  where the three
+  // chars are floor height, ceiling height (base 36, in tiles) and hazard kind
+  // (0 block, 1 wheel, 2 saw, 3 wedge, 4 strip). Codes without the V1 header are
+  // read as bare column data at default pace, so older codes still load.
+  // strict: demand the V1/V2 header. Without it almost any text decodes, because
+  // base 36 reads letters as heights -- "hello" became a two-column level. Only
+  // the legacy ?lvl= URL is allowed to pass bare column data.
+  function decodeLevel(raw, strict) {
+    if (!raw) return null;
+
+    var s = String(raw).replace(/\s+/g, ""), speed = 900, react = 0.38, slot = 0;
+    // V2 carries the level number it replaces. V1 is a standalone level, and bare
+    // column data still loads at a default pace, so no old code stops working.
+    var m2 = /^V2\.(\d+)\.(\d+)\.(\d+)\.(.*)$/.exec(s);
+    var m  = /^V1\.(\d+)\.(\d+)\.(.*)$/.exec(s);
+    if (m2) {
+      slot  = Math.max(0, Math.min(16, parseInt(m2[1], 10) || 0));
+      speed = Math.max(200, Math.min(3000, parseInt(m2[2], 10) || 900));
+      react = Math.max(0.22, Math.min(0.9, (parseInt(m2[3], 10) || 38) / 100));
+      s = m2[4];
+    } else if (m) {
+      speed = Math.max(200, Math.min(3000, parseInt(m[1], 10) || 900));
+      react = Math.max(0.22, Math.min(0.9, (parseInt(m[2], 10) || 38) / 100));
+      s = m[3];
+    } else if (strict) {
+      // Nothing but a well-formed header will do. Base 36 reads letters as
+      // heights, so without this "hello" decodes into a two-column level, and a
+      // half-written header like "V2.9.999.99" decodes into nonsense.
+      return null;
+    }
+    var cols = [];
+    for (var i = 0; i + 2 < s.length + 1; i += 3) {
+      // charAt, not s[i] — bracket indexing on strings is ES5, and silently
+      // yields undefined on older engines, which parseInt then turns into a
+      // garbage number rather than failing loudly.
+      var f = parseInt(s.charAt(i), 36), c = parseInt(s.charAt(i + 1), 36);
+      if (isNaN(f) || isNaN(c)) continue;
+      // clamp to the corridor so a hand-edited code can never seal it
+      f = Math.max(0, Math.min(12, f));
+      c = Math.max(0, Math.min(12, c));
+      if (f + c > 12) c = Math.max(0, 12 - f);
+      var k = parseInt(s.charAt(i + 2), 10);
+      if (isNaN(k) || k < 0 || k > 4) k = 0;
+      cols.push({ f: f, c: c, t: false, s: k });
+    }
+    return cols.length ? { cols: cols, speed: speed, react: react, slot: slot } : null;
+  }
+
+  // Lay the authored level out as real obstacles. Runs of equal height merge
+  // into one block so a hand-drawn wall becomes a single solid column.
+  function spawnCustom() {
+    if (!customLevel || customDone) return;
+    var lookahead = W * 1.6;
+    while (customCol < customLevel.length && customX < distance + lookahead) {
+      var col = customLevel[customCol];
+      var run = 1;
+      while (customCol + run < customLevel.length &&
+             customLevel[customCol + run].f === col.f &&
+             customLevel[customCol + run].c === col.c &&
+             customLevel[customCol + run].s === col.s) run++;
+      var wpx = run * TILE, sx = customX - distance;
+      var KINDS = ["block", "rotor", "saw", "wedge", "strip"];
+      var kind = KINDS[col.s] || "block";
+      if (col.f > 0) obstacles.push({ x: sx, w: wpx, h: col.f * TILE, ceil: false,
+        type: kind, rot: 0, seed: Math.random() * 1000, scored: false, passed: false });
+      if (col.c > 0) obstacles.push({ x: sx, w: wpx, h: col.c * TILE, ceil: true,
+        type: kind, rot: 0, seed: Math.random() * 1000, scored: false, passed: false });
+      if (col.t) {
+        var openTop = CEIL + col.c * TILE, openBot = GROUND - col.f * TILE;
+        coins.push({ x: sx + wpx / 2, y: (openTop + openBot) / 2,
+                     r: Math.max(11, W * 0.014), got: false, red: false, val: 1 });
+      }
+      customX += wpx;
+      customCol += run;
+    }
+    if (customCol >= customLevel.length) {
+      customDone = true;
+      // A level should end on something you can see coming, not on the obstacles
+      // quietly running out. Seal the corridor: flying into it is the finish.
+      // A wall band, not a hairline and not a slab -- wide enough to read as solid.
+      if (worldMode) finishGate = { x: customX - distance, w: FINISH_W, parked: false };
+    }
+  }
+
+  // ---------- WORLD mode: finite, completable levels ----------
+  // Each level is generated from a fixed seed, so level 3 is always the same
+  // level 3. Spacing is derived from that level's own reaction time, which makes
+  // every level fair by construction rather than by luck.
+  // Six difficulty tiers. The rating is not decoration -- it is checked against the
+  // level's measured reaction window, so a level can never be labelled easier than
+  // the one before it.
+  // Cool to hot through violet and magenta -- Vaultflip's own neon palette rather
+  // than the green/yellow/orange/red ramp the genre usually uses.
+  var DIFFS = {
+    EASY:   "#35f0c0",
+    NORMAL: "#35b6ff",
+    HARD:   "#7b5cff",
+    HARDER: "#c04dff",
+    INSANE: "#ff45c8",
+    DEMON:  "#ff2f4f"
+  };
+  // Each level teaches or tests one idea, named below, and the plan is written to
+  // do exactly that -- no two levels are the same shape.
+  var LEVELS = [
+    { n: 1, speed: 560, react: 0.42, d: "EASY", name: "FIRST FLIP",
+      // one hazard at a time, always with a long breath after it
+      plan: "fb4 . cb4 . fb5 . cb5 . fb4 cb4 . fb6 . cb6 . fb5 cb5 . fb4 . cb7" },
+    { n: 2, speed: 660, react: 0.40, d: "EASY", name: "LOW GROUND",
+      // introduces the spike strip: the floor is gone, so ride the ceiling
+      plan: "ft8 . cb4 . ft10 . cb5 ft8 . cb4 . ft12 . cb5 . ft10 cb6 . ft14 . cb5 ft10" },
+    { n: 3, speed: 780, react: 0.37, d: "NORMAL", name: "ROLLING",
+      // discs, small and slow, on alternating rails
+      plan: "fs3 cs3 fs4 . cs4 fs3 > cs3 . fs5 cs5 . fs4 cs4 . fs5 > cs5 . fs6 cs6 . fs4 cs4 fs5" },
+    { n: 4, speed: 900, react: 0.35, d: "NORMAL", name: "TEETH",
+      // little spikes in quick pairs, then a block to break the rhythm
+      plan: "fk1 > fk2 . ck1 > ck2 . fk2 ck2 > fk1 . cb5 . fk2 > ck2 . fb6 . " +
+            "ck1 > fk1 > ck2 . fb5 . fk2 > ck2 > fk1 . cb6 . fk2 ck2 fk2 . cb7" },
+    { n: 5, speed: 1040, react: 0.34, d: "NORMAL", name: "THE LADDER",
+      // blocks climbing on one rail, then the same climb mirrored above
+      plan: "fb3 fb5 fb7 . cb3 cb5 cb7 . fb8 . cb8 . fb4 cb4 . " +
+            "fb9 fb7 fb5 . cb9 cb7 cb5 . fb6 cb6 fb8 cb8 . fb10 . cb10" },
+    { n: 6, speed: 1200, react: 0.32, d: "HARD", name: "WHEELHOUSE",
+      // vault wheels, growing, with strips underneath to deny the easy rail
+      plan: "fw3 . cw4 . ft10 cw3 . fw5 . cw5 . ct12 fw4 . cw6 . " +
+            "ft12 cw5 . fw6 . ct14 fw5 . cw7 . fw7 . ct10 fw4 . cw6 fw6" },
+    { n: 7, speed: 1380, react: 0.31, d: "HARD", name: "ZIGZAG",
+      // pure alternation, every piece a rail change, no rest anywhere
+      plan: "fb5 > cb5 > fb5 > cb5 . fb6 > cb6 > fb6 > cb6 . fb7 > cb7 > fb7 > cb7 . " +
+            "fb5 > cb6 > fb7 > cb5 > fb6 > cb7 . fb8 > cb8 > fb8 > cb8 . fb9 > cb9" },
+    { n: 8, speed: 1560, react: 0.30, d: "HARD", name: "BIG IRON",
+      // the largest discs in the game, one at a time, nowhere to hide
+      plan: "fs6 . cs6 . fs7 . cs7 . fw7 . cw7 . fs6 cs6 . " +
+            "fw6 . cs7 . fs7 . cw6 . fs5 cs5 fw7 . cs6 fs6 . cw7 . fs7 cs7" },
+    { n: 9, speed: 1720, react: 0.29, d: "HARDER", name: "CROSSFIRE",
+      // saw, spike, block on rotating rails -- three shapes, one rhythm
+      plan: "fs4 > ck2 > cb6 . cs4 > fk2 > fb6 . fs5 > ck1 > cb7 . cs5 > fk1 > fb7 . " +
+            "fs6 > ck2 > cb8 . cs6 > fk2 > fb8 . fs4 > ck1 > cb6 . cs4 > fk1 > fb6 . " +
+            "fs5 > ck2 > cb7 . cs5 > fk2 > fb7" },
+    { n: 10, speed: 1880, react: 0.29, d: "HARDER", name: "THE LONG FLOOR",
+      // strips back to back: long stretches where only one rail exists
+      plan: "ft14 . ct14 . ft12 > cb5 . ct12 > fb5 . ft16 . ct16 . " +
+            "ft14 > cb6 . ct14 > fb6 . ft18 . ct18 . ft12 > cb7 . ct12 > fb7 . ft16 ct16" },
+    { n: 11, speed: 2040, react: 0.28, d: "HARDER", name: "MACHINERY",
+      // wheels and saws interleaved, sizes stepping up then back down
+      plan: "fw3 > cs3 . fw4 > cs4 . fw5 > cs5 . fw6 > cs6 . fw7 > cs7 . " +
+            "cw7 > fs7 . cw6 > fs6 . cw5 > fs5 . cw4 > fs4 . cw3 > fs3 . " +
+            "fw5 > cs5 > fw6 > cs6 > fw7 > cs7" },
+    { n: 12, speed: 2200, react: 0.28, d: "INSANE", name: "STACCATO",
+      // every piece quick-linked -- the whole level is one long chain
+      plan: "fb4 > cb4 > fk2 > ck2 > fs3 > cs3 > fb5 > cb5 > fk1 > ck1 > fw4 > cw4 . " +
+            "cb6 > fb6 > ck2 > fk2 > cs4 > fs4 > cb7 > fb7 > ck1 > fk1 > cw5 > fw5 . " +
+            "fb5 > cs5 > fw5 > ck2 > cb8 > fs6 > cw6 > fk2 > fb6 > cb6" },
+    { n: 13, speed: 2340, react: 0.27, d: "INSANE", name: "SPIKE FIELD",
+      // spikes and strips only: the floor and ceiling are both hostile
+      plan: "ft10 > ck2 . ct10 > fk2 . ft12 > ck1 > cb6 . ct12 > fk1 > fb6 . ft14 . " +
+            "ct14 > fk2 . ft16 > ck2 . ct12 > fk1 > fb7 . ft12 > ck1 > cb7 . " +
+            "ct16 . ft14 > ck2 > cb6 . ct14 > fk2 > fb6 . ft18" },
+    { n: 14, speed: 2480, react: 0.27, d: "INSANE", name: "TOWER RUN",
+      // tall blocks only, alternating, at a speed where they arrive as walls
+      plan: "fb8 > cb8 > fb9 > cb9 . fb10 > cb10 . fb8 cb8 > fb9 cb9 . " +
+            "cb10 > fb10 > cb9 > fb9 . cb8 > fb8 . fb10 cb10 > fb9 cb9 . " +
+            "fb8 > cb9 > fb10 > cb8 > fb9 > cb10 . fb11 > cb11" },
+    { n: 15, speed: 2620, react: 0.265, d: "DEMON", name: "THE GRINDER",
+      // the level 8 discs at nearly double the speed, chained
+      plan: "fs6 > cs6 > fw6 > cw6 . fs7 > cs7 > fw7 > cw7 . fs5 > cs5 > fw5 > cw5 . " +
+            "cw6 > fw6 > cs6 > fs6 . cw7 > fw7 > cs7 > fs7 . " +
+            "fs7 > cw7 > fw7 > cs7 > fs6 > cw6 > fw6 > cs6" },
+    { n: 16, speed: 2800, react: 0.26, d: "DEMON", name: "VAULTFLIP",
+      // one of everything, in order, then all of it again with no rest at all
+      plan: "fb6 > cs4 > fw4 > ck2 > ft10 . cb6 > fs4 > cw4 > fk2 > ct10 . " +
+            "fb8 > cs6 > fw6 > ck2 > ft12 > cb8 > fs6 > cw6 > fk2 > ct12 . " +
+            "fb7 > cs5 > fw5 > ck1 > ft14 . cb7 > fs5 > cw5 > fk1 > ct14 . " +
+            "fb9 > cs7 > fw7 > ck2 > ft16 > cb9 > fs7 > cw7 > fk2 > ct16" }
+  ];
+  var worldMode = false, worldIdx = 0, worldBeat = 0, levelLen = 1;
+  try { worldBeat = parseInt(store.get("vaultflip_world") || "0", 10) || 0; } catch (e) {}
+
+  // Per-level records: furthest you have reached, and most tokens you have taken.
+  // Stored as two comma-separated lists so one bad entry cannot corrupt the rest.
+  var bestPct = [];
+  function loadRecords(key, into) {
+    var raw = "";
+    try { raw = store.get(key) || ""; } catch (e) {}
+    var parts = raw.split(",");
+    for (var i = 0; i < LEVELS.length; i++) {
+      var v = parseInt(parts[i], 10);
+      into.push(isNaN(v) || v < 0 ? 0 : v);
+    }
+  }
+  var attempts = [];
+  loadRecords("vaultflip_pct", bestPct);
+  loadRecords("vaultflip_att", attempts);
+  function saveRecords() {
+    try {
+      store.set("vaultflip_pct", bestPct.join(","));
+      store.set("vaultflip_att", attempts.join(","));
+    } catch (e) {}
+  }
+  // How far through the level you are, 0-100. Once the end wall has parked the
+  // world stops moving, so measure the gap to the wall instead of the distance
+  // travelled -- both give the same number, and it stays right through the dash.
+  function levelPct() {
+    var d = finishGate ? levelLen - (finishGate.x - player.x - player.size) : distance;
+    return Math.max(0, Math.min(100, Math.round(d / levelLen * 100)));
+  }
+  // Called on death and on finishing: records are high-water marks, never lowered.
+  function recordLevel(pct) {
+    if (myIdx >= 0) {
+      if (pct > myPct[myIdx]) { myPct[myIdx] = pct; saveMine(); }
+      return;
+    }
+    if (pct > bestPct[worldIdx]) bestPct[worldIdx] = pct;
+    saveRecords();
+  }
+  function seededRandom(seed) {
+    var s = seed;
+    return function () { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+  }
+  // Build the level as columns, the same shape the custom-level player consumes.
+  // Every level is written out by hand as a list of pieces, read left to right.
+  // A piece is <side><kind><size>:
+  //     side   f floor, c ceiling
+  //     kind   b block, s saw disc, w vault wheel, k spike, t spike strip
+  //     size   height in tiles -- for t it is the LENGTH, height is fixed at 2
+  // Two extra tokens shape the rhythm: "." is an extra beat of rest, and ">"
+  // halves the rest after the piece before it, for a quick one-two.
+  // Rest is measured from the level's own reaction window, so a plan reads the
+  // same at any speed and the timing stays fair however the pieces are arranged.
+  // ---------- Replaced levels ----------
+  // A code built in the editor can stand in for one of the sixteen. The original
+  // is never overwritten -- the override sits beside it and can be cleared, so
+  // "replace" is always reversible.
+  var overrides = {};
+  // Re-read every time the shelf opens, not just at boot. The editor writes to
+  // the same storage, so a level saved there shows up by reopening WORLD --
+  // no reload, no copying a code around.
+  function loadOverrides() {
+    var raw = "";
+    try { raw = store.get("vaultflip_over") || ""; } catch (e) {}
+    overrides = {};
+    var lines = raw.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var bar = lines[i].indexOf("|");
+      if (bar < 1) continue;
+      var n = parseInt(lines[i].substring(0, bar), 10);
+      var code = lines[i].substring(bar + 1);
+      if (n >= 1 && n <= 16 && decodeLevel(code)) overrides[n] = code;
+    }
+  }
+  loadOverrides();
+  function saveOverrides() {
+    var out = [];
+    for (var k in overrides) if (overrides.hasOwnProperty(k)) out.push(k + "|" + overrides[k]);
+    try { store.set("vaultflip_over", out.join("\n")); } catch (e) {}
+  }
+  function setOverride(n, code) { overrides[n] = code; saveOverrides(); }
+  function clearOverride(n) { delete overrides[n]; saveOverrides(); }
+  function overrideFor(i) {
+    var code = overrides[i + 1];
+    return code ? decodeLevel(code) : null;
+  }
+
+  function buildLevel(i) {
+    var over = overrideFor(i);
+    if (over) return over.cols;
+    var L = LEVELS[i];
+
+    var gapCols = Math.ceil((L.speed * L.react) / TILE);
+    var cols = [], c;
+    function rest(n) { for (c = 0; c < n; c++) cols.push({ f: 0, c: 0, t: false, s: 0 }); }
+    function piece(side, kind, size) {
+      var s = { b: 0, w: 1, s: 2, k: 3, t: 4 }[kind];
+      var h, wide;
+      if (kind === "s" || kind === "w") { h = size; wide = size; }   // round: square
+      else if (kind === "t")            { h = 2; wide = size; }      // strip: size is length
+      else if (kind === "k")            { h = size; wide = size + 1; }
+      else                              { h = size; wide = 2; }
+      h = Math.min(h, 12);
+      var onCeil = side === "c";
+      for (c = 0; c < wide; c++) {
+        cols.push({ f: onCeil ? 0 : h, c: onCeil ? h : 0, t: false, s: s });
+      }
+    }
+    rest(gapCols * 2);                                  // calm opening
+    var plan = L.plan.split(" ");
+    for (var p = 0; p < plan.length; p++) {
+      var tok = plan[p];
+      if (tok === ".") { rest(gapCols); continue; }
+      if (tok === ">") continue;                        // handled as a lookahead below
+      piece(tok.charAt(0), tok.charAt(1), parseInt(tok.substring(2), 10));
+      // A ">" after this piece means keep the pressure on: half rest, but never
+      // below the full reaction window, so "quick" never means "unreadable".
+      var quick = plan[p + 1] === ">";
+      rest(quick ? gapCols : gapCols + 1);
+    }
+    rest(gapCols * 2);                                  // run-out to the finish
+    return cols;
+  }
+
+  // ---------- Your own levels ----------
+  // Stored as name + code, newline separated, so one corrupt entry cannot take
+  // the rest of the list with it.
+  var myLevels = [], myPct = [];
+  function loadMine() {
+    myLevels = []; myPct = [];
+    var raw = "";
+    try { raw = store.get("vaultflip_mine") || ""; } catch (e) {}
+    var lines = raw.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var bar = lines[i].indexOf("|");
+      if (bar < 1) continue;
+      var name = lines[i].substring(0, bar), code = lines[i].substring(bar + 1);
+      if (decodeLevel(code)) { myLevels.push({ name: name, code: code }); myPct.push(0); }
+    }
+    var praw = "";
+    try { praw = store.get("vaultflip_minepct") || ""; } catch (e) {}
+    var ps = praw.split(",");
+    for (var j = 0; j < myPct.length; j++) {
+      var v = parseInt(ps[j], 10);
+      if (!isNaN(v) && v > 0) myPct[j] = Math.min(100, v);
+    }
+  }
+  loadMine();
+  function saveMine() {
+    var out = [];
+    for (var i = 0; i < myLevels.length; i++) out.push(myLevels[i].name + "|" + myLevels[i].code);
+    try {
+      store.set("vaultflip_mine", out.join("\n"));
+      store.set("vaultflip_minepct", myPct.join(","));
+    } catch (e) {}
+  }
+  function addMine(code, name) {
+    var got = decodeLevel(code, true);
+    if (!got) return false;
+    myLevels.push({ name: (name || ("MY " + (myLevels.length + 1))).substring(0, 14), code: code });
+    myPct.push(0);
+    saveMine();
+    return true;
+  }
+
+  var myIdx = -1;                    // which of your levels is running, -1 = none
+  function startMine(i) {
+    var got = decodeLevel(myLevels[i].code);
+    if (!got) return;
+    worldMode = true; worldIdx = 0; myIdx = i;
+    SPEED_START = got.speed; SPEED_MAX = got.speed; SPEED_ACC = 0;
+    REACT = got.react;
+    customLevel = got.cols;
+    levelLen = W + customLevel.length * TILE - (W * 0.24 + P_SIZE);
+    startGame();
+  }
+
+  function startLevel(i) {
+    myIdx = -1;
+    worldMode = true; worldIdx = i;
+    var over = overrideFor(i), L = LEVELS[i];
+    var sp = over ? over.speed : L.speed, rc = over ? over.react : L.react;
+    SPEED_START = sp; SPEED_MAX = sp; SPEED_ACC = 0;   // constant pace within a level
+    REACT = rc;
+
+    customLevel = buildLevel(i);
+    // The distance the square itself must cover: the level starts one screen off
+    // to the right, and it starts already a little way in from the left edge.
+    levelLen = W + customLevel.length * TILE - (W * 0.24 + P_SIZE);
+    attempts[i] = (attempts[i] || 0) + 1;
+    saveRecords();
+    startGame();
+  }
+  function stepParticles(dt) {
+    for (var p = particles.length - 1; p >= 0; p--) {
+      var pt = particles[p];
+      pt.x += pt.vx; pt.y += pt.vy; pt.vy += 0.18; pt.vx *= 0.99;
+      pt.life -= dt * 1.8;
+      if (pt.life <= 0) particles.splice(p, 1);
+    }
+  }
+  // Crossing the line plays a celebration before the stats appear: a shower of
+  // white squares, light rays fanning out from where you crossed, then the title
+  // punching in. The scene freezes underneath it -- the level is over.
+  var win = null;
+  var WIN_HOLD = 2.0;               // seconds of celebration before the panel
+  function beginWin() {
+    state = STATE.WIN;
+    sdkGameplayStop();
+    var cx = player.x + player.size / 2, cy = player.y + player.size / 2;
+    win = { t: 0, x: cx, y: cy, rays: [], bits: [] };
+    for (var r = 0; r < 22; r++) {
+      win.rays.push({ a: Math.random() * Math.PI * 2,
+                      sp: 900 + Math.random() * 1500,
+                      w: 3 + Math.random() * 12,
+                      d: 60 + Math.random() * 120 });
+    }
+    for (var b = 0; b < 90; b++) {
+      var a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 460;
+      win.bits.push({ x: cx, y: cy, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+                      sz: 3 + Math.random() * 11, life: 1, spin: Math.random() * 6 });
+    }
+    sfx.rare();
+    shake = 0.8;
+  }
+  function winUpdate(dt) {
+    win.t += dt;
+    if (shake > 0) shake = Math.max(0, shake - dt * 4);
+    for (var i = 0; i < win.rays.length; i++) {
+      var ry = win.rays[i];
+      ry.d += ry.sp * dt;
+      ry.sp *= 0.97;
+    }
+    for (var j = win.bits.length - 1; j >= 0; j--) {
+      var bt = win.bits[j];
+      bt.x += bt.vx * dt; bt.y += bt.vy * dt;
+      bt.vx *= 0.965; bt.vy *= 0.965;
+      bt.life -= dt * 0.45;
+      if (bt.life <= 0) win.bits.splice(j, 1);
+    }
+    if (win.t >= WIN_HOLD) return levelDone();
+  }
+  function drawWin() {
+    if (!win) return;
+    var t = win.t;
+    // radial flash behind everything, brightest at the moment of crossing
+    var flash = Math.max(0, 1 - t / 0.9);
+    if (flash > 0) {
+      var g = ctx.createRadialGradient(win.x, win.y, 0, win.x, win.y, W * 0.85);
+      g.addColorStop(0, "rgba(255,255,255," + (0.85 * flash) + ")");
+      g.addColorStop(0.35, "rgba(255,255,255," + (0.28 * flash) + ")");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+    // light rays fanning out from the crossing point
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - t / 1.5) * 0.9;
+    ctx.fillStyle = "#fff";
+    ctx.translate(win.x, win.y);
+    for (var i = 0; i < win.rays.length; i++) {
+      var ry = win.rays[i];
+      ctx.save();
+      ctx.rotate(ry.a);
+      ctx.beginPath();
+      ctx.moveTo(0, -ry.w / 2);
+      ctx.lineTo(ry.d, -ry.w * 1.6);
+      ctx.lineTo(ry.d, ry.w * 1.6);
+      ctx.lineTo(0, ry.w / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+    // drifting white squares
+    ctx.save();
+    for (var j = 0; j < win.bits.length; j++) {
+      var bt = win.bits[j];
+      ctx.globalAlpha = Math.max(0, Math.min(1, bt.life));
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(bt.x - bt.sz / 2, bt.y - bt.sz / 2, bt.sz, bt.sz);
+    }
+    ctx.restore();
+    // the title, punching in with a little overshoot
+    if (t > 0.25) {
+      var k = Math.min(1, (t - 0.25) / 0.35);
+      var sc = 1 + 0.55 * (1 - k) - 0.12 * Math.sin(k * Math.PI);
+      ctx.save();
+      ctx.translate(W / 2, CEIL + (GROUND - CEIL) / 2);
+      ctx.scale(sc, sc);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "900 " + Math.round(H * 0.13) + "px system-ui, sans-serif";
+      ctx.lineJoin = "round";
+      ctx.shadowColor = "#6ffcb5";
+      ctx.shadowBlur = 34;
+      ctx.lineWidth = Math.max(6, H * 0.018);
+      ctx.strokeStyle = "#06211a";
+      ctx.strokeText("LEVEL COMPLETE!", 0, 0);
+      ctx.fillStyle = "#6ffcb5";
+      ctx.fillText("LEVEL COMPLETE!", 0, 0);
+      ctx.restore();
+    }
+  }
+
+  function levelDone() {
+    recordLevel(100);
+    sfx.win();
+    worldMode = false;
+    sdkGameplayStop();
+    var mine = myIdx >= 0;
+    if (!mine && worldIdx + 1 > worldBeat) {
+      worldBeat = worldIdx + 1;
+      try { store.set("vaultflip_world", String(worldBeat)); } catch (e) {}
+    }
+    document.getElementById("wonName").textContent =
+      mine ? myLevels[myIdx].name : LEVELS[worldIdx].name;
+    var wd = document.getElementById("wonDiff");
+    wd.textContent = mine ? "YOURS" : LEVELS[worldIdx].d;
+    var wc = mine ? "#ffd35c" : DIFFS[LEVELS[worldIdx].d];
+    wd.style.color = wc;
+    wd.style.textShadow = "0 0 12px " + wc;
+    document.getElementById("wonAttempts").textContent =
+      mine ? "-" : (attempts[worldIdx] || 1);
+    var secs = Math.round(runTime);
+    document.getElementById("wonTime").textContent =
+      Math.floor(secs / 60) + ":" + (secs % 60 < 10 ? "0" : "") + (secs % 60);
+    // No "next" for one of yours -- they are a set, not a ladder.
+    document.getElementById("wonNext").style.display =
+      (!mine && worldIdx + 1 < LEVELS.length) ? "" : "none";
+    state = STATE.DEAD;
+    show("won");
+    document.getElementById("hud").classList.add("hidden");
+    document.getElementById("prog").classList.add("hidden");
+    document.getElementById("mute").classList.add("hidden");
+    document.getElementById("pause").classList.add("hidden");
+  }
+  // One dialog serving as prompt, confirm and alert. onOk gets the textarea's
+  // text; passing wantText false hides the box and makes it a yes/no.
+  var askOnOk = null;
+  function ask(title, message, wantText, value, onOk) {
+    document.getElementById("askTag").textContent = title;
+    document.getElementById("askMsg").textContent = message || "";
+    var box = document.getElementById("askBox");
+    box.style.display = wantText ? "" : "none";
+    box.value = value || "";
+    document.getElementById("askOk").textContent = onOk ? "OK" : "CLOSE";
+    document.getElementById("askNo").style.display = onOk ? "" : "none";
+    askOnOk = onOk || null;
+    show("ask");
+    if (wantText) { try { box.focus(); } catch (e) {} }
+  }
+  function tell(title, message) { ask(title, message, false, "", null); }
+
+  // ---------- Shop: crates ----------
+  // Skins come out of crates rather than off a shelf. Every crate states its own
+  // odds on the card -- a player should always be able to see what they are
+  // paying for, and hidden odds are the part of this idea worth refusing.
+  var RARITY = {
+    COMMON:    { col: "#8ea4c9", n: "COMMON" },
+    RARE:      { col: "#23d5ff", n: "RARE" },
+    EPIC:      { col: "#c04dff", n: "EPIC" },
+    LEGENDARY: { col: "#ffd35c", n: "LEGENDARY" },
+    MYTHIC:    { col: "#ff5ce0", n: "MYTHIC" }
+  };
+  // Every skin belongs to exactly one crate, five each. Which crate you open
+  // decides which five you can get -- the crates are different sets, not the same
+  // set at different prices. "c" is the crate; STOCK belongs to none, you start
+  // with it.
+  var SKINS = [
+    { id: "pink",   name: "STOCK",            r: "COMMON",    c: "start", col: null },
+
+    { id: "slate",  name: "BRICK",            r: "COMMON",    c: "basic", col: "#b4573a" },
+    { id: "rust",   name: "CRATE",            r: "COMMON",    c: "basic", col: "#b98240" },
+    { id: "moss",   name: "DICE",             r: "COMMON",    c: "basic", col: "#f2f2e8" },
+    { id: "sand",   name: "TOAST",            r: "RARE",      c: "basic", col: "#f6dfae" },
+    { id: "ember",  name: "BURGER",           r: "EPIC",      c: "basic", col: "#e8a75c" },
+
+    { id: "bone",   name: "TELLY",            r: "COMMON",    c: "prime", col: "#8ff0ff" },
+    { id: "cyan",   name: "FROG",             r: "RARE",      c: "prime", col: "#4bbf3f" },
+    { id: "mint",   name: "CASSETTE",         r: "RARE",      c: "prime", col: "#dfe7f5" },
+    { id: "orchid", name: "BEE",              r: "RARE",      c: "prime", col: "#f7c93b" },
+    { id: "violet", name: "GALAXY",           r: "EPIC",      c: "prime", col: "#c04dff" },
+
+    { id: "cobalt", name: "CIRCUIT",          r: "RARE",      c: "vault", col: "#5fe0a0" },
+    { id: "blood",  name: "LAVA",             r: "EPIC",      c: "vault", col: "#ff5a1f" },
+    { id: "toxic",  name: "CHECKER",          r: "EPIC",      c: "vault", col: "#f2f2f2" },
+    { id: "white",  name: "SKULL",            r: "EPIC",      c: "vault", col: "#ece7dc" },
+    { id: "pizza",  name: "PIZZA",            r: "EPIC",      c: "vault", col: "#e8a75c" },
+
+    // Shared pool: these belong to no crate, which is how new legendaries can be
+    // added without any crate growing past its five. A crate reaches them through
+    // its own odds for that tier: PRIME and VAULT can both give legendaries, and
+    // only VAULT gives the mythic.
+    { id: "void",   name: "BLACK HOLE",       r: "LEGENDARY", c: null,    col: "#7b4dff" },
+    { id: "crown",  name: "CROWN",            r: "LEGENDARY", c: null,    col: "#ffd35c" },
+    { id: "gem",    name: "DIAMOND",          r: "LEGENDARY", c: null,    col: "#8ff0ff" },
+    { id: "prism",  name: "PRISM",            r: "MYTHIC",    c: null,    col: "#ff5ce0" }
+
+  ];
+  // odds are percentages and must total 100 -- checked at boot below
+  var CRATES = [
+    { id: "basic", name: "BASIC CRATE", cost: 20,
+      odds: { COMMON: 62, RARE: 30, EPIC: 8, LEGENDARY: 0, MYTHIC: 0 } },
+    { id: "prime", name: "PRIME CRATE", cost: 55,
+      odds: { COMMON: 20, RARE: 57, EPIC: 18, LEGENDARY: 5, MYTHIC: 0 } },
+    { id: "vault", name: "VAULT CRATE", cost: 120,
+      odds: { COMMON: 0, RARE: 22, EPIC: 61, LEGENDARY: 15, MYTHIC: 2 } }
+  ];
+  // Rarity gives a long unlucky tail: without this, one player finishes the set
+  // in an hour and another is still missing a skin after four. Twelve crates
+  // without something new and the next one is guaranteed to be new.
+  var PITY = 12, sinceNew = 0;
+  // Tokens are worth more in the purse than they are to the score. Scaling the
+  // pickup itself would have inflated every score ever set, since score counts
+  // tokens too -- so the multiplier lives here, on the way into the wallet.
+  var TOKEN_RATE = 4;
+  (function checkOdds() {
+    for (var i = 0; i < CRATES.length; i++) {
+      var t = 0, o = CRATES[i].odds;
+      for (var k in o) if (o.hasOwnProperty(k)) t += o[k];
+      if (t !== 100) throw new Error("crate " + CRATES[i].id + " odds total " + t);
+    }
+  })();
+
+  var wallet = 0, owned = { pink: 1 }, equipped = "pink", shopTab = "crates";
+  function loadShop() {
+    try {
+      wallet = parseInt(store.get("vaultflip_wallet") || "0", 10) || 0;
+      var o = (store.get("vaultflip_owned") || "").split(",");
+      for (var i = 0; i < o.length; i++) if (o[i] && skinById(o[i])) owned[o[i]] = 1;
+      var eq = store.get("vaultflip_skin") || "pink";
+      if (owned[eq]) equipped = eq;
+    } catch (e) {}
+  }
+  loadShop();
+  function skinById(id) {
+    for (var i = 0; i < SKINS.length; i++) if (SKINS[i].id === id) return SKINS[i];
+    return null;
+  }
+  function saveShop() {
+    var list = [];
+    for (var k in owned) if (owned.hasOwnProperty(k)) list.push(k);
+    try {
+      store.set("vaultflip_wallet", String(wallet));
+      store.set("vaultflip_owned", list.join(","));
+      store.set("vaultflip_skin", equipped);
+    } catch (e) {}
+  }
+  function skinColour() {
+    // PRISM has no colour of its own -- it runs through the spectrum, which is
+    // the whole point of it being the one mythic thing in the game.
+    if (equipped === "prism") {
+      return "hsl(" + Math.floor((Date.now() / 12) % 360) + ",100%,62%)";
+    }
+    var s = skinById(equipped);
+    return s ? s.col : null;          // null means "use the stage colour"
+  }
+  function bankTokens(n) {
+    if (n <= 0) return;
+    wallet += n;
+    saveShop();
+    var w = document.getElementById("walletArt");
+    if (w) w.textContent = wallet;
+  }
+  // ---- how each skin is painted ----
+  // A flat colour disappears once the stage turns the same hue, so every skin is
+  // a small drawing instead. One function paints them, used both by the player in
+  // game and by the swatches in the shop -- so what you see in the crate is
+  // exactly what you wear.
+  function paintSkin(g, id, x, y, w, h, fallback) {
+    var u = w / 8, v = h / 8;                 // an eighth of the square, for layout
+    function box(a, b, c, d, col) { g.fillStyle = col; g.fillRect(x + a * u, y + b * v, c * u, d * v); }
+    function dot(a, b, r, col) {
+      g.fillStyle = col; g.beginPath();
+      g.arc(x + a * u, y + b * v, r * u, 0, Math.PI * 2); g.fill();
+    }
+    switch (id) {
+      case "slate":                            // BRICK
+        box(0, 0, 8, 8, "#b4573a");
+        box(0, 2.6, 8, 0.5, "#e5c9b4"); box(0, 5.2, 8, 0.5, "#e5c9b4");
+        box(3.8, 0, 0.5, 2.6, "#e5c9b4"); box(1.6, 3.1, 0.5, 2.1, "#e5c9b4");
+        box(5.9, 3.1, 0.5, 2.1, "#e5c9b4"); box(3.8, 5.7, 0.5, 2.3, "#e5c9b4");
+        break;
+      case "rust":                             // CRATE
+        box(0, 0, 8, 8, "#b98240");
+        box(0, 0, 8, 1, "#7d5426"); box(0, 7, 8, 1, "#7d5426");
+        g.strokeStyle = "#7d5426"; g.lineWidth = Math.max(1.5, u * 0.7);
+        g.beginPath();
+        g.moveTo(x + u * 0.6, y + v * 1.2); g.lineTo(x + u * 7.4, y + v * 6.8);
+        g.moveTo(x + u * 7.4, y + v * 1.2); g.lineTo(x + u * 0.6, y + v * 6.8);
+        g.stroke();
+        break;
+      case "moss":                             // DICE
+        box(0, 0, 8, 8, "#f2f2e8");
+        dot(2, 2, 0.62, "#22262e"); dot(6, 2, 0.62, "#22262e");
+        dot(4, 4, 0.62, "#22262e");
+        dot(2, 6, 0.62, "#22262e"); dot(6, 6, 0.62, "#22262e");
+        break;
+      case "sand":                             // TOAST
+        box(0, 0, 8, 8, "#d9a05a");
+        box(0.9, 1.4, 6.2, 5.4, "#f6dfae");
+        box(2.2, 2.4, 3.3, 2.2, "#f7cf5e");   // the butter
+        break;
+      case "ember":                            // BURGER
+        box(0, 0.4, 8, 2.4, "#e8a75c");        // top bun
+        box(0.6, 0.4, 6.8, 0.7, "#f3c489");    // its highlight
+        dot(2.4, 1.5, 0.22, "#f7e6c4"); dot(4.4, 1.1, 0.22, "#f7e6c4");
+        dot(5.6, 1.8, 0.22, "#f7e6c4");        // sesame seeds
+        box(0, 2.8, 8, 0.9, "#6fc04a");        // lettuce
+        box(0, 3.6, 8, 0.8, "#ffc93b");        // cheese
+        box(0, 4.3, 8, 1.6, "#7a4326");        // patty
+        box(0, 5.9, 8, 2.1, "#d9954c");        // bottom bun
+        break;
+      case "bone":                             // TV
+        box(0, 0, 8, 8, "#4a4f5c");
+        box(0.9, 1.2, 6.2, 4.6, "#8ff0ff");
+        box(0.9, 1.2, 6.2, 0.6, "#d8ffff");
+        box(1.6, 6.4, 1.2, 1.2, "#22262e"); box(5.2, 6.4, 1.2, 1.2, "#22262e");
+        break;
+      case "cyan":                             // FROG
+        box(0, 0, 8, 8, "#4bbf3f");
+        dot(2.3, 2.3, 1.15, "#ffffff"); dot(5.7, 2.3, 1.15, "#ffffff");
+        dot(2.3, 2.3, 0.55, "#101418"); dot(5.7, 2.3, 0.55, "#101418");
+        box(1.6, 5.4, 4.8, 0.7, "#1d6b1b");
+        break;
+      case "mint":                             // CASSETTE
+        box(0, 0, 8, 8, "#2f3b52");
+        box(0.7, 1.2, 6.6, 4.2, "#dfe7f5");
+        dot(2.6, 3.3, 0.85, "#2f3b52"); dot(5.4, 3.3, 0.85, "#2f3b52");
+        box(2.6, 2.9, 2.8, 0.8, "#2f3b52");
+        box(1.4, 6.2, 5.2, 0.9, "#8ea4c9");
+        break;
+      case "orchid":                           // BEE
+        box(0, 0, 8, 8, "#f7c93b");
+        box(0, 1.6, 8, 1.3, "#1b1b1b"); box(0, 4.2, 8, 1.3, "#1b1b1b");
+        box(0, 6.8, 8, 1.2, "#1b1b1b");
+        break;
+      case "violet":                           // GALAXY
+        box(0, 0, 8, 8, "#241452");
+        dot(2.1, 1.9, 0.32, "#ffffff"); dot(6.1, 2.7, 0.24, "#ffe9a8");
+        dot(3.4, 5.6, 0.28, "#ffffff"); dot(6.6, 6.1, 0.2, "#b6a6ff");
+        dot(1.4, 6.4, 0.22, "#ffffff");
+        dot(4.4, 3.4, 0.95, "#c04dff"); dot(4.4, 3.4, 0.45, "#ffffff");
+        break;
+      case "cobalt":                           // CIRCUIT
+        box(0, 0, 8, 8, "#0f3d2e");
+        g.strokeStyle = "#5fe0a0"; g.lineWidth = Math.max(1.2, u * 0.42);
+        g.beginPath();
+        g.moveTo(x, y + v * 2.2); g.lineTo(x + u * 3, y + v * 2.2); g.lineTo(x + u * 3, y + v * 5.4);
+        g.lineTo(x + u * 8, y + v * 5.4);
+        g.moveTo(x + u * 5.4, y); g.lineTo(x + u * 5.4, y + v * 3.2); g.lineTo(x + u * 8, y + v * 3.2);
+        g.stroke();
+        dot(3, 5.4, 0.42, "#d8ffe9"); dot(5.4, 3.2, 0.42, "#d8ffe9");
+        break;
+      case "blood":                            // LAVA
+        box(0, 0, 8, 8, "#241110");
+        g.strokeStyle = "#ff5a1f"; g.lineWidth = Math.max(1.4, u * 0.6);
+        g.beginPath();
+        g.moveTo(x, y + v * 1.6); g.lineTo(x + u * 2.6, y + v * 3.1);
+        g.lineTo(x + u * 1.4, y + v * 5.2); g.lineTo(x + u * 4, y + v * 8);
+        g.moveTo(x + u * 4.6, y); g.lineTo(x + u * 5.6, y + v * 2.6);
+        g.lineTo(x + u * 8, y + v * 3.4);
+        g.stroke();
+        dot(6.4, 6.2, 0.5, "#ffb03a");
+        break;
+      case "toxic":                            // CHECKER
+        box(0, 0, 8, 8, "#f2f2f2");
+        var s = 2;
+        for (var r = 0; r < 4; r++) {
+          for (var c = 0; c < 4; c++) {
+            if ((r + c) % 2 === 0) box(c * s, r * s, s, s, "#16181d");
+          }
+        }
+        break;
+      case "white":                            // SKULL
+        box(0, 0, 8, 8, "#ece7dc");
+        dot(2.5, 3.1, 1.05, "#1a1a1a"); dot(5.5, 3.1, 1.05, "#1a1a1a");
+        box(3.5, 5, 1, 1.1, "#1a1a1a");
+        box(2.4, 6.6, 0.7, 1.4, "#1a1a1a"); box(3.65, 6.6, 0.7, 1.4, "#1a1a1a");
+        box(4.9, 6.6, 0.7, 1.4, "#1a1a1a");
+        break;
+      case "void":                             // BLACK HOLE
+        box(0, 0, 8, 8, "#05060c");
+        g.strokeStyle = "#7b4dff"; g.lineWidth = Math.max(1.4, u * 0.55);
+        g.beginPath(); g.arc(x + w / 2, y + h / 2, u * 3.1, 0, Math.PI * 2); g.stroke();
+        g.strokeStyle = "#ff6fd8"; g.lineWidth = Math.max(1, u * 0.35);
+        g.beginPath(); g.arc(x + w / 2, y + h / 2, u * 2.1, 0, Math.PI * 2); g.stroke();
+        dot(4, 4, 1.2, "#05060c");
+        break;
+      case "pizza":                            // PIZZA
+        box(0, 0, 8, 8, "#e8a75c");            // crust
+        box(0.8, 0.8, 6.4, 6.4, "#f7cf5e");    // cheese
+        dot(2.6, 2.5, 0.7, "#c9342b"); dot(5.4, 3.4, 0.7, "#c9342b");
+        dot(3.4, 5.6, 0.7, "#c9342b");         // pepperoni
+        break;
+      case "crown":                            // CROWN
+        box(0, 0, 8, 8, "#2b2350");
+        g.fillStyle = "#ffd35c";
+        g.beginPath();
+        g.moveTo(x + u * 0.8, y + v * 6.2);
+        g.lineTo(x + u * 0.8, y + v * 2.2);
+        g.lineTo(x + u * 2.4, y + v * 4);
+        g.lineTo(x + u * 4, y + v * 1.6);
+        g.lineTo(x + u * 5.6, y + v * 4);
+        g.lineTo(x + u * 7.2, y + v * 2.2);
+        g.lineTo(x + u * 7.2, y + v * 6.2);
+        g.closePath();
+        g.fill();
+        box(0.8, 6.4, 6.4, 0.9, "#e0a92f");    // the band
+        dot(4, 5.1, 0.4, "#ff4d6d");           // a stone
+        break;
+      case "gem":                              // DIAMOND
+        box(0, 0, 8, 8, "#101c2e");
+        g.fillStyle = "#8ff0ff";
+        g.beginPath();
+        g.moveTo(x + u * 4, y + v * 7.2);
+        g.lineTo(x + u * 0.9, y + v * 3.1);
+        g.lineTo(x + u * 2.3, y + v * 1.2);
+        g.lineTo(x + u * 5.7, y + v * 1.2);
+        g.lineTo(x + u * 7.1, y + v * 3.1);
+        g.closePath();
+        g.fill();
+        g.fillStyle = "#d8ffff";
+        g.beginPath();
+        g.moveTo(x + u * 2.3, y + v * 1.2);
+        g.lineTo(x + u * 4, y + v * 3.1);
+        g.lineTo(x + u * 5.7, y + v * 1.2);
+        g.closePath();
+        g.fill();
+        g.strokeStyle = "#2b6c86"; g.lineWidth = Math.max(1, u * 0.28);
+        g.beginPath();
+        g.moveTo(x + u * 0.9, y + v * 3.1); g.lineTo(x + u * 7.1, y + v * 3.1);
+        g.moveTo(x + u * 4, y + v * 3.1); g.lineTo(x + u * 4, y + v * 7.2);
+        g.stroke();
+        break;
+      case "prism":                            // MYTHIC -- runs through the spectrum
+
+        var base = (Date.now() / 12) % 360;
+        for (var b = 0; b < 8; b++) {
+          box(0, b, 8, 1, "hsl(" + Math.floor((base + b * 22) % 360) + ",100%,60%)");
+        }
+        break;
+      default:                                 // STOCK -- follows the stage colour
+        g.fillStyle = fallback;
+        g.fillRect(x, y, w, h);
+    }
+  }
+
+  // hidden: paint a blank instead of the design, for skins not yet found. The
+  // mask used to be CSS on the swatch element, which stopped working the moment
+  // the swatch became a canvas -- so it is done here, where it cannot silently lapse.
+  function swatch(sk, size, hidden) {
+    var b = document.createElement("div");
+    b.className = "swatchBox";
+    var cv2 = document.createElement("canvas");
+    cv2.width = 48; cv2.height = 48;
+    var g2 = cv2.getContext ? cv2.getContext("2d") : null;
+    if (g2) {
+      if (hidden) {
+        g2.fillStyle = "#131c2e";
+        g2.fillRect(0, 0, 48, 48);
+        g2.fillStyle = "#46587e";
+        g2.font = "bold 26px Segoe UI, Arial, sans-serif";
+        g2.textAlign = "center";
+        g2.textBaseline = "middle";
+        g2.fillText("?", 24, 25);
+      } else {
+        paintSkin(g2, sk.id, 0, 0, 48, 48, "#ff2ea6");
+      }
+    }
+    cv2.style.boxShadow = hidden ? "none" : "0 0 16px " + (sk.col || "#ff2ea6");
+    b.appendChild(cv2);
+    if (size) { b.style.width = size; b.style.height = size; }
+    return b;
+  }
+
+  // Roll a rarity against the crate's odds, then a skin within it. Unowned ones
+  // are preferred so an early crate is far more likely to be something new;
+  // once a tier is exhausted a duplicate comes back and is refunded instead.
+  function rollCrate(crate) {
+    var roll = Math.random() * 100, acc = 0, tier = "COMMON";
+    var order = ["COMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC"];
+    for (var i = 0; i < order.length; i++) {
+      acc += crate.odds[order[i]];
+      if (roll < acc) { tier = order[i]; break; }
+    }
+    // Legendary and mythic skins sit outside the crates entirely -- a shared pool
+    // reached through whatever odds a crate lists for that tier. That is what lets
+    // new ones be added without any crate growing past its five.
+    var shared = [], sharedNew = [];
+    for (var k = 0; k < SKINS.length; k++) {
+      if (SKINS[k].c !== null || SKINS[k].r !== tier) continue;
+      shared.push(SKINS[k]);
+      if (!owned[SKINS[k].id]) sharedNew.push(SKINS[k]);
+    }
+    if (shared.length) {
+      // Normally a shared-tier roll wins outright. The exception: if a new skin is
+      // owed and every one in this tier is already yours, it cannot settle that
+      // debt -- fall through to the crate's own five rather than pay a duplicate.
+      if (!(sinceNew >= PITY && !sharedNew.length)) {
+        var pick = sharedNew.length ? sharedNew : shared;
+        return pick[Math.floor(Math.random() * pick.length)];
+      }
+    }
+
+    var pool = [], fresh = [];
+    for (var j = 0; j < SKINS.length; j++) {
+      if (SKINS[j].c !== crate.id || SKINS[j].r !== tier) continue;
+      pool.push(SKINS[j]);
+      if (!owned[SKINS[j].id]) fresh.push(SKINS[j]);
+    }
+    // Owed a new one? Widen to anything unowned in THIS crate -- never another
+    // crate's, or the guarantee would hand out something you did not pay for.
+    if (sinceNew >= PITY && !fresh.length) {
+      var anyNew = [];
+      for (var q = 0; q < SKINS.length; q++) {
+        if (SKINS[q].c === crate.id && !owned[SKINS[q].id]) anyNew.push(SKINS[q]);
+      }
+      if (anyNew.length) return anyNew[Math.floor(Math.random() * anyNew.length)];
+    }
+    // The tier came up empty (every skin in it is a tier this crate lacks), so
+    // fall back to the rest of the crate rather than returning nothing.
+    if (!pool.length) {
+      for (var z = 0; z < SKINS.length; z++) {
+        if (SKINS[z].c !== crate.id) continue;
+        pool.push(SKINS[z]);
+        if (!owned[SKINS[z].id]) fresh.push(SKINS[z]);
+      }
+    }
+    if (!pool.length) return null;
+    var from = fresh.length ? fresh : pool;
+    return from[Math.floor(Math.random() * from.length)];
+  }
+
+  function buildShop() {
+    var g = document.getElementById("shopGrid");
+    g.innerHTML = "";
+    document.getElementById("purse").textContent = wallet;
+    document.getElementById("walletArt").textContent = wallet;
+    document.getElementById("tabCrates").className = shopTab === "crates" ? "shopTab on" : "shopTab";
+    document.getElementById("tabKit").className = shopTab === "kit" ? "shopTab on" : "shopTab";
+    if (shopTab === "crates") buildCrates(g); else buildCollection(g);
+  }
+
+  function buildCrates(g) {
+    for (var i = 0; i < CRATES.length; i++) {
+      (function (cr) {
+        var poor = wallet < cr.cost;
+        var card = document.createElement("div");
+        card.className = "shopItem crate" + (poor ? " poor" : "");
+
+        var lid = document.createElement("div");
+        lid.className = "crateArt";
+        lid.textContent = "\u25A0";
+        lid.style.color = cr.id === "vault" ? "#ffd35c" : (cr.id === "prime" ? "#c04dff" : "#23d5ff");
+        card.appendChild(lid);
+
+        var nm = document.createElement("div");
+        nm.className = "shopName";
+        nm.textContent = cr.name;
+        card.appendChild(nm);
+
+        // Odds on the card, always -- you can see what you are paying for.
+        var odds = document.createElement("div");
+        odds.className = "crateOdds";
+        var order = ["MYTHIC", "LEGENDARY", "EPIC", "RARE", "COMMON"];
+        for (var k = 0; k < order.length; k++) {
+          var tier = order[k];
+          if (!cr.odds[tier]) continue;
+          var line = document.createElement("div");
+          line.className = "oddsRow";
+
+          var pctEl = document.createElement("b");
+          pctEl.textContent = cr.odds[tier] + "%";
+          pctEl.style.color = RARITY[tier].col;
+          line.appendChild(pctEl);
+
+          var tierEl = document.createElement("span");
+          tierEl.textContent = RARITY[tier].n;
+          tierEl.style.color = RARITY[tier].col;
+          line.appendChild(tierEl);
+
+          // The skins that tier can actually give you. Ones you already own are
+          // faded, so the bright dots are exactly what is still out there.
+          var dots = document.createElement("span");
+          dots.className = "oddsDots";
+          for (var d = 0; d < SKINS.length; d++) {
+            var sk = SKINS[d];
+            // Shared skins have no crate of their own, so they are admitted on
+            // whichever rows this crate actually pays odds for.
+            var mine = (sk.c === cr.id) || (sk.c === null);
+            if (!mine || sk.r !== tier) continue;
+
+            var dot = document.createElement("i");
+            var c = sk.col || "#ff2ea6";
+            dot.style.background = sk.id === "prism"
+              ? "linear-gradient(135deg,#ff2ea6,#ffd35c,#6ffcb5,#23d5ff,#c04dff)" : c;
+            if (owned[sk.id]) {
+              dot.className = "have";
+              dot.title = sk.name + " (found)";
+            } else {
+              dot.style.boxShadow = "0 0 7px " + c;
+              dot.title = sk.name;
+            }
+            dots.appendChild(dot);
+          }
+          line.appendChild(dots);
+          odds.appendChild(line);
+        }
+        var pity = document.createElement("div");
+        pity.className = "cratePity";
+        pity.textContent = "new skin within " + PITY;
+        odds.appendChild(pity);
+        card.appendChild(odds);
+
+        var cost = document.createElement("div");
+        cost.className = "shopCost";
+        cost.textContent = cr.cost + " tokens";
+        card.appendChild(cost);
+
+        var btn = document.createElement("button");
+        btn.className = "shopBtn";
+        btn.textContent = poor ? "NOT ENOUGH" : "OPEN";
+        if (!poor) btn.addEventListener("click", function () { spinCrate(cr); });
+        card.appendChild(btn);
+        g.appendChild(card);
+      })(CRATES[i]);
+    }
+  }
+
+  function buildCollection(g) {
+    // Least rare first, so the shelf builds towards the good stuff rather than
+    // opening on it. Sorted on a copy -- SKINS itself is ordered by crate, which
+    // the crate cards rely on.
+    var rank = { COMMON: 0, RARE: 1, EPIC: 2, LEGENDARY: 3, MYTHIC: 4 };
+    var list = SKINS.slice().sort(function (a, b) { return rank[a.r] - rank[b.r]; });
+    for (var i = 0; i < list.length; i++) {
+      (function (sk) {
+        var have = !!owned[sk.id], on = equipped === sk.id;
+        var card = document.createElement("div");
+        card.className = "shopItem" + (on ? " on" : (have ? " owned" : " locked"));
+        var box = swatch(sk, null, !have);
+        card.appendChild(box);
+
+        var nm = document.createElement("div");
+        nm.className = "shopName";
+        nm.textContent = have ? sk.name : "???";
+        card.appendChild(nm);
+
+        var rr = document.createElement("div");
+        rr.className = "shopCost";
+        rr.textContent = RARITY[sk.r].n;
+        rr.style.color = RARITY[sk.r].col;
+        rr.style.textShadow = "0 0 12px " + RARITY[sk.r].col;
+        card.appendChild(rr);
+
+        var btn = document.createElement("button");
+        btn.className = "shopBtn";
+        btn.textContent = on ? "WEARING" : (have ? "WEAR IT" : "NOT FOUND");
+        if (have && !on) {
+          btn.addEventListener("click", function () {
+            equipped = sk.id; saveShop(); buildShop();
+          });
+        }
+        card.appendChild(btn);
+        g.appendChild(card);
+      })(list[i]);
+    }
+  }
+
+  // ---- the spin ----
+  // A strip of skins slides past and eases to a stop on the one you won. The
+  // result is decided before the animation starts; the reel only shows it.
+  var spinning = false;
+  function spinCrate(cr) {
+    if (spinning || wallet < cr.cost) return;
+    var won = rollCrate(cr);
+    if (!won) return;
+    var dup = !!owned[won.id];
+    var refund = dup ? Math.round(cr.cost * 0.4) : 0;
+
+    spinning = true;
+    wallet -= cr.cost;
+    sinceNew = dup ? sinceNew + 1 : 0;
+    if (!dup) owned[won.id] = 1;
+    wallet += refund;
+    saveShop();
+
+    var CELLW = 120, LAND = 40;                 // the winner sits at index LAND
+    var strip = document.getElementById("reelStrip");
+    strip.innerHTML = "";
+    for (var i = 0; i <= LAND + 6; i++) {
+      var sk = (i === LAND) ? won : SKINS[Math.floor(Math.random() * SKINS.length)];
+      var cell = document.createElement("div");
+      cell.className = "reelCell";
+      cell.style.borderColor = RARITY[sk.r].col;
+      cell.appendChild(swatch(sk));
+      strip.appendChild(cell);
+    }
+    document.getElementById("reelName").textContent = cr.name;
+    document.getElementById("reelResult").className = "reelResult hidden";
+    document.getElementById("reelDone").className = "shopBtn hidden";
+    show("reel");
+
+    // start at 0, then let the browser paint before easing to the landing spot,
+    // otherwise the transition has nothing to animate from
+    strip.style.transition = "none";
+    strip.style.transform = "translateX(0px)";
+    var target = -(LAND * CELLW) + (document.getElementById("reelWin").clientWidth / 2) - (CELLW / 2);
+    setTimeout(function () {
+      strip.style.transition = "transform 3.1s cubic-bezier(.12,.72,.16,1)";
+      strip.style.transform = "translateX(" + target + "px)";
+    }, 40);
+    // Ticks laid out to match the reel's easing: dense at the start, stretching
+    // out as it slows, so what you hear tracks what you see.
+    for (var s = 0; s < 26; s++) {
+      var frac = s / 25;
+      var when = (1 - Math.pow(1 - frac, 2.6)) * 3.05 * 1000;
+      setTimeout(function () { sfx.tick(); }, when);
+    }
+    setTimeout(function () { landed(won, dup, refund); }, 3300);
+  }
+
+  function landed(won, dup, refund) {
+    spinning = false;
+    sfx.reveal(won.r);
+    var res = document.getElementById("reelResult");
+    res.className = "reelResult";
+    document.getElementById("reelRarity").textContent = RARITY[won.r].n;
+    document.getElementById("reelRarity").style.color = RARITY[won.r].col;
+    document.getElementById("reelRarity").style.textShadow = "0 0 14px " + RARITY[won.r].col;
+    document.getElementById("reelSkin").textContent = won.name;
+    document.getElementById("reelNote").textContent = dup
+      ? "Already had it - " + refund + " tokens back"
+      : "New skin, and it is yours";
+    document.getElementById("reelDone").className = "shopBtn";
+    saveShop();
+  }
+  function buildLevelGrid() {
+    loadOverrides();
+    var g = document.getElementById("lvlGrid");
+    g.innerHTML = "";
+    for (var i = 0; i < LEVELS.length; i++) {
+      (function (idx) {
+        var locked = idx > worldBeat, cleared = idx < worldBeat;
+        var pct = cleared ? 100 : bestPct[idx];
+
+        var card = document.createElement("div");
+        card.className = "wsCard" + (cleared ? " done" : "") + (locked ? " lock" : "");
+
+        var disc = document.createElement("div");
+        disc.className = "wsDisc";
+        // A padlock while locked, a tick once cleared, the number while it is the
+        // one in front of you -- so the card tells you its state without reading it.
+        if (locked) {
+          var lk = document.createElement("div");
+          lk.className = "wsLock";
+          disc.appendChild(lk);
+        } else {
+          disc.innerHTML = cleared ? "&#10003;" : String(LEVELS[idx].n);
+        }
+        card.appendChild(disc);
+
+        var name = document.createElement("div");
+        name.className = "wsName";
+        name.textContent = LEVELS[idx].n + ". " + LEVELS[idx].name;
+        card.appendChild(name);
+
+        // The rating is a fact about the level, not about your progress, so it keeps
+        // its colour even while locked -- just dimmed, so you can see what is coming.
+        var diff = document.createElement("div");
+        diff.className = "wsDiff";
+        diff.textContent = LEVELS[idx].d;
+        var col = DIFFS[LEVELS[idx].d];
+        diff.style.color = col;
+        diff.style.borderColor = col;
+        diff.style.textShadow = "0 0 10px " + col;
+        if (locked) diff.style.opacity = "0.45";
+        card.appendChild(diff);
+
+        var meter = document.createElement("div");
+        meter.className = "wsMeter";
+        var fill = document.createElement("div");
+        fill.className = "wsFill";
+        fill.style.width = pct + "%";
+        meter.appendChild(fill);
+        var lab = document.createElement("div");
+        lab.className = "wsPct";
+        lab.textContent = pct + "%";
+        meter.appendChild(lab);
+        card.appendChild(meter);
+
+        var go = document.createElement("button");
+        go.className = "wsGo";
+        go.innerHTML = locked ? "LOCKED" : "START &#9654;";
+        if (!locked) go.addEventListener("click", function () { startLevel(idx); });
+        card.appendChild(go);
+
+        if (overrides[idx + 1]) {
+          card.className += " edited";
+          var rev = document.createElement("button");
+          rev.className = "wsDel";
+          rev.textContent = "yours - restore original";
+          rev.addEventListener("click", function () {
+            clearOverride(idx + 1); buildLevelGrid();
+          });
+          card.appendChild(rev);
+        }
+
+        g.appendChild(card);
+      })(i);
+    }
+    // ---- your own levels, then a card to paste a new one in ----
+    for (var mi = 0; mi < myLevels.length; mi++) {
+      (function (mx) {
+        var card = document.createElement("div");
+        card.className = "wsCard mine";
+
+        var disc = document.createElement("div");
+        disc.className = "wsDisc";
+        disc.innerHTML = "&#9733;";
+        card.appendChild(disc);
+
+        var nm = document.createElement("div");
+        nm.className = "wsName";
+        nm.textContent = myLevels[mx].name;
+        card.appendChild(nm);
+
+        var dd = document.createElement("div");
+        dd.className = "wsDiff";
+        dd.textContent = "YOURS";
+        dd.style.color = "#ffd35c";
+        dd.style.borderColor = "#ffd35c";
+        dd.style.textShadow = "0 0 10px #ffd35c";
+        card.appendChild(dd);
+
+        var mt = document.createElement("div");
+        mt.className = "wsMeter";
+        var mf = document.createElement("div");
+        mf.className = "wsFill";
+        mf.style.width = myPct[mx] + "%";
+        mt.appendChild(mf);
+        var ml = document.createElement("div");
+        ml.className = "wsPct";
+        ml.textContent = myPct[mx] + "%";
+        mt.appendChild(ml);
+        card.appendChild(mt);
+
+        var go = document.createElement("button");
+        go.className = "wsGo";
+        go.innerHTML = "START &#9654;";
+        go.addEventListener("click", function () { startMine(mx); });
+        card.appendChild(go);
+
+        var del = document.createElement("button");
+        del.className = "wsDel";
+        del.textContent = "delete";
+        del.addEventListener("click", function () {
+          myLevels.splice(mx, 1); myPct.splice(mx, 1); saveMine(); buildLevelGrid();
+        });
+        card.appendChild(del);
+
+        g.appendChild(card);
+      })(mi);
+    }
+
+    // Open the shelf on the level you are actually up to, not always on level 1.
+    var cards = g.children;
+    if (cards.length && worldBeat > 1 && cards[worldBeat]) {
+      g.scrollLeft = cards[worldBeat].offsetLeft - g.clientWidth / 2 + cards[worldBeat].clientWidth / 2;
+    }
+  }
+
+  // ---------- Spawning ----------
+  var sinceObstacle = 0;
+  var customX = 0;
+
+  // Seconds the player is guaranteed to react and flip between hazards on
+  // opposite surfaces. Human reaction is ~0.25s, so this leaves real headroom.
+  // NOT the same as the window the player actually gets. Measured by exhaustive
+  // search, the usable window comes out well BELOW this, because wide blocks eat
+  // into the spacing. At 0.34 the tightest forced flip was 150ms — under human
+  // reaction time, i.e. genuinely impossible. 0.48 puts it back over 250ms.
+  var REACT = 0.33;
+
+  // Master switch for the mid-corridor platforms (and their walls). Off = the
+  // game is a pure floor/ceiling flipper.
+
+  // Separate scales: tall and narrow reads as a column, not a wall. Width barely
+  // grows, height doubles.
+  var SCALE_W = 1.05;
+  var SCALE_H = 2.0;
+  // Per-block size spread so a run mixes stubs, mid-height and towers instead of
+  // everything landing on one size.
+  var SIZE_MIX = [0.45, 0.62, 0.80, 1.0, 1.22, 1.45];
+  // Round hazards scale as one number, since width and height have to stay equal.
+  var ROUND_MIX = [0.60, 0.80, 1.0, 1.25, 1.55];
+
+  // 0 at the start of a run, ramping to 1 — drives how nasty obstacles get.
+  // Stretched out so the climb is long and gradual: full difficulty now takes
+  // roughly two-thirds longer to reach than it used to, but the ceiling at the
+  // top is considerably higher.
+  function diffFactor() { return Math.min(1, distance / 18000); }
+
+  // Obstacles arrive as small choreographed formations rather than a steady
+  // drip. Each step is { t: seconds after the formation starts, f: 0 = same
+  // surface as the lead piece, 1 = the opposite surface }. Any step that
+  // switches surface is spaced at least REACT (0.42s) from the one before it,
+  // so every shape stays physically passable at any speed.
+  var FORMATIONS = [
+    // Same-lane steps sit 0.16-0.18s apart so they read as one tight CLUSTER —
+    // no flip is needed between them, so they can safely be packed close.
+    // Any step that switches lane keeps the full REACT window.
+    { d: 0.00, s: [{t:0,f:0}] },                                              // solo
+    { d: 0.00, s: [{t:0,f:0},{t:0.17,f:0}] },                                 // pair
+    { d: 0.00, s: [{t:0,f:0},{t:0.17,f:0},{t:0.34,f:0}] },                    // cluster of three
+    { d: 0.05, s: [{t:0,f:0},{t:0.48,f:1}] },                                 // pinch: one flip
+    { d: 0.20, s: [{t:0,f:0},{t:0.16,f:0},{t:0.32,f:0},{t:0.48,f:0}] },       // wall of four
+    { d: 0.28, s: [{t:0,f:0},{t:0.46,f:1},{t:0.92,f:0}] },                    // zigzag
+    { d: 0.40, s: [{t:0,f:0},{t:0.17,f:0},{t:0.34,f:0},{t:0.80,f:1}] },       // stair: rhythm, then break
+    { d: 0.55, s: [{t:0,f:0},{t:0.17,f:0},{t:0.63,f:1},{t:0.80,f:1}] },       // cluster, flip, cluster
+    { d: 0.68, s: [{t:0,f:0},{t:0.44,f:1},{t:0.88,f:0},{t:1.32,f:1}] },       // weave
+    { d: 0.75, s: [{t:0,f:0},{t:0.15,f:0},{t:0.30,f:0},{t:0.76,f:1},{t:0.91,f:1}] }, // big cluster, flip, big cluster
+    { d: 0.88, s: [{t:0,f:0},{t:0.15,f:0},{t:0.30,f:0},{t:0.45,f:0},{t:0.60,f:0}] }  // wall of five
+  ];
+  function pickPattern() {
+    var d = diffFactor(), pool = [];
+    for (var i = 0; i < FORMATIONS.length; i++) {
+      if (FORMATIONS[i].d <= d) pool.push(FORMATIONS[i].s);
+    }
+    // Bias toward the newer, busier shapes as the run goes on, while still
+    // dealing the occasional single so the pacing breathes.
+    var idx = Math.floor(Math.pow(Math.random(), 1 - d * 0.55) * pool.length);
+    return pool[Math.min(idx, pool.length - 1)];
+  }
+
+  function makeObstacle(onCeil, atX) {
+    var d = diffFactor();
+    // Harder types become more likely the further you get.
+    var roll = Math.random() * (distance > 2500 ? 1 : 0.55);
+    var t, w, h;
+    // SPIKE STRIP: a long run of pure teeth along the surface, like a bed of
+    // spikes. It used to be gated on score 1000, which almost nobody reaches, so
+    // it never actually appeared — it is on distance now, same as the rest.
+    if (distance > 900 && Math.random() < 0.20) {
+      return { x: atX + Math.max(130, W * (0.21 + 0.12 * d)), w: Math.max(130, W * (0.21 + 0.12 * d)),
+               h: LANE * 0.95, ceil: onCeil, type: "strip", rot: 0,
+               seed: Math.random() * 1000, scored: false, passed: false };
+    }
+    // ROUND HAZARDS: a spinning vault wheel or a toothed saw disc, bolted to the
+    // rail. Both must stay round, so they return early and skip the width/height
+    // scaling the blocks get — that scales the two axes independently and would
+    // squash a disc into an ellipse.
+    if (distance > 800 && Math.random() < 0.32) {
+      // Size varies per hazard, not just with difficulty -- a run of identical
+      // discs reads as one repeated prop rather than as a hazard you size up.
+      var sd = LANE * (1.45 + 0.85 * d) * ROUND_MIX[Math.floor(Math.random() * ROUND_MIX.length)];
+      sd = Math.min(sd, (GROUND - CEIL) - P_SIZE * 2.1);
+      sd = Math.max(TILE * 2, Math.floor(sd / TILE) * TILE);
+      return { x: atX + sd, w: sd, h: sd, ceil: onCeil,
+               type: Math.random() < 0.5 ? "saw" : "rotor", rot: 0,
+               seed: Math.random() * 1000, scored: false, passed: false };
+    }
+    // WEDGE: a triangle on the rail. The aspect ratio is the whole character of
+    // it -- steep ones are spikes, shallow ones are ramps -- so pick that first
+    // and let the size follow, rather than scaling width and height separately.
+    if (distance > 600 && Math.random() < 0.18) {
+      // Capped at two tiles however far you get -- a wedge stays a little spike.
+      var wh = Math.min(LANE * (0.85 + 0.65 * d) * (0.7 + Math.random() * 0.7),
+                        TILE * 2);
+      var ratio = 0.6 + Math.random() * 1.8;            // 0.6 = steep spike, 2.4 = ramp
+      var ww = Math.max(TILE, Math.floor(wh * ratio / TILE) * TILE);
+      wh = Math.max(TILE, Math.floor(wh / TILE) * TILE);
+      return { x: atX + ww, w: ww, h: wh, ceil: onCeil, type: "wedge", rot: 0,
+               seed: Math.random() * 1000, scored: false, passed: false };
+    }
+    // These are size profiles, not different-looking hazards — they all draw as
+    // the same spiked blue block. Every one grows substantially with d.
+    if (roll < 0.30 - 0.10 * d) {
+      t = "block"; w = Math.max(30, Math.min(120, W * (0.055 + 0.048 * d)));
+      h = LANE * (1.05 + 0.55 * d) + Math.random() * H * (0.17 + 0.34 * d);
+    } else if (roll < 0.52 - 0.06 * d) {
+      t = "spike"; w = Math.max(34, W * (0.060 + 0.040 * d));
+      h = LANE * (1.25 + 0.85 * d) + Math.random() * H * (0.11 + 0.20 * d);
+    } else if (roll < 0.70 - 0.03 * d) {
+      t = "slab";  w = Math.max(84, W * (0.135 + 0.150 * d));
+      h = LANE * (0.82 + 0.60 * d);
+    } else if (roll < 0.87) {
+      // was a free-standing rotating saw — now just a squat spiked block bolted
+      // to the rail like everything else, same colour, same teeth, same rules.
+      t = "block"; w = Math.max(54, LANE * (1.05 + 0.95 * d));
+      h = LANE * (0.95 + 0.50 * d) + Math.random() * H * (0.10 + 0.16 * d);
+    } else if (roll < 0.93) {
+      // Double-decker: tall enough that the seam between the two tiers reads.
+      t = "double"; w = Math.max(46, W * (0.070 + 0.045 * d));
+      h = LANE * (1.6 + 0.95 * d) + Math.random() * H * (0.14 + 0.24 * d);
+    } else {
+      t = "laser"; w = Math.max(22, W * (0.028 + 0.030 * d));
+      h = LANE * (1.7 + 1.15 * d) + Math.random() * H * (0.19 + 0.28 * d);
+    }
+    w *= SCALE_W;
+    h *= SCALE_H * SIZE_MIX[Math.floor(Math.random() * SIZE_MIX.length)];
+    // Never let an obstacle seal the corridor — always leave a runnable lane.
+    h = Math.min(h, (GROUND - CEIL) - P_SIZE * 2.1);
+    // Snap to a tile grid. Free-form sizes read as arbitrary rectangles; snapping
+    // makes structures line up with each other like stacked blocks, which is what
+    // gives grid-built platformers their look. Snap DOWN so the clamp above is
+    // never violated.
+    w = Math.max(TILE, Math.floor(w / TILE) * TILE);
+    h = Math.max(TILE, Math.floor(h / TILE) * TILE);
+    // seed fixes this block's spike profile so the teeth don't shimmer frame to frame
+    return { x: atX + w, w: w, h: h, ceil: onCeil, type: t, rot: 0,
+             seed: Math.random() * 1000, scored: false, passed: false };
+  }
+  function spawn(dt) {
+    // An authored level replaces procedural generation entirely.
+    if (customLevel) { spawnCustom(); return; }
+    sinceObstacle += speed * dt;
+    // The gap must give the player REACT seconds to see and flip, whatever the
+    // speed. A purely pixel-based gap becomes impossible once the world is fast.
+    // The rest gap between formations shrinks as the run goes on, so hazards
+    // arrive more often. The speed*REACT term is the hard floor that keeps a
+    // lane change survivable — only the buffer above it is allowed to tighten.
+    var gap = Math.max(330 - distance * 0.008, speed * REACT + (250 - 120 * diffFactor()));
+    if (sinceObstacle >= gap) {
+      var pat = pickPattern();
+      // Pure coin-flip leads clump: several same-lane formations in a row can put
+      // a dozen blocks on one surface. Nudge each new formation toward whichever
+      // side is currently behind, so the split stays even and streaks stay short.
+      var bias = Math.max(-0.34, Math.min(0.34, laneBalance * 0.07));
+      var leadCeil = Math.random() < (0.5 - bias);
+      var prev = null, spanEnd = W, lastCeil = leadCeil;
+
+      for (var n = 0; n < pat.length; n++) {
+        var step = pat[n];
+        var onCeil = step.f ? !leadCeil : leadCeil;
+        var o = makeObstacle(onCeil, W + speed * step.t);
+        // Whatever the timing table says, never let a piece crowd the one before
+        // it: a surface change needs a full reaction window, and same-surface
+        // pieces still need daylight between them so they don't merge into a blob.
+        if (prev) {
+          // Same lane needs only enough daylight to read as separate blocks;
+          // a lane change needs the full reaction window.
+          var gapNeeded = (onCeil !== prev.ceil) ? speed * REACT : Math.max(26, speed * 0.055);
+          var minStart = prev.x + prev.w + gapNeeded;
+          if (o.x < minStart) o.x = minStart;
+        }
+        obstacles.push(o);
+        prev = o; lastCeil = onCeil;
+        laneBalance += onCeil ? 1 : -1;   // running tally, drives the bias above
+        if (o.x + o.w > spanEnd) spanEnd = o.x + o.w;
+      }
+
+      // Next formation is measured from the END of this one, so bunches never
+      // run into each other.
+      // ---- Gauntlet: a centre platform with BOTH rails walled off beside it, so
+      // the platform is the only survivable route through. Deliberately NOT
+      // spiked: a player arriving along the floor can only reach the underside,
+      // one arriving along the ceiling can only reach the top, so spiking either
+      // face would make one of those approaches unsurvivable.
+      // Sunbursts start at 800 and are decoration only — centred exactly on the
+      // rail so half sits above the surface and half is buried in it.
+      // Floating tile clusters drifting mid-corridor. Deliberately dim and behind
+      // the action — they are scenery, and must never be mistaken for a hazard.
+      if (Math.random() < 0.55) {
+        var cluster = 1 + Math.floor(Math.random() * 3);
+        var fx = spanEnd + Math.random() * gap;
+        var fy = CEIL + P_SIZE * 1.6 + Math.random() * ((GROUND - CEIL) - P_SIZE * 3.2);
+        for (var fb = 0; fb < cluster; fb++) {
+          decors.push({ kind: "tile", x: fx + fb * TILE * 1.15,
+                        y: fy + (Math.random() < 0.5 ? 0 : TILE * 1.15), r: TILE });
+        }
+      }
+
+
+      sinceObstacle = -(spanEnd - W);
+
+      // Token lives in the clear rest gap AFTER the formation, on the surface the
+      // player is already standing on (opposite the last piece) — reachable
+      // without asking for an extra flip, and never inside a hazard.
+      if (Math.random() < 0.42) {
+        var jitter = (Math.random() - 0.5) * P_SIZE * 0.3;
+        var cy = lastCeil ? (GROUND - P_SIZE * 0.5 + jitter)
+                          : (CEIL + P_SIZE * 0.5 + jitter);
+        // Roughly 1 in 9 tokens is the rare red one, worth 5 instead of 1.
+        var rare = Math.random() < 0.11;
+        var baseR = Math.max(11, W * 0.014);
+        coins.push({ x: spanEnd + gap * 0.45, y: cy, r: rare ? baseR * 1.3 : baseR,
+                     got: false, red: rare, val: rare ? 5 : 1 });
+      }
+
+    }
+  }
+
+  // ---------- Update ----------
+  function aabb(ax, ay, aw, ah, bx, by, bw, bh) {
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  }
+
+  function update(dt) {
+    if (state === STATE.WIN) return winUpdate(dt);
+    if (state !== STATE.PLAY) return;
+    runTime += dt;
+    speed = Math.min(SPEED_START + SPEED_ACC * runTime, SPEED_MAX);
+    // Once the end wall has slid into place the world stops dead and the square
+    // runs the last stretch into it. The wall waits for you; it never travels
+    // alongside the camera, which would make the end look like it is fleeing.
+    runSpeed = speed;
+    if (finishGate && finishGate.parked) speed = 0;
+    distance += speed * dt;
+    if (flipAnim > 0) flipAnim = Math.max(0, flipAnim - dt * 6);
+    if (trail) { trail.life -= dt * 5; if (trail.life <= 0) trail = null; }
+    if (shake > 0) shake = Math.max(0, shake - dt * 4);
+    // floating "+1 TOKEN" labels drift up and fade
+    for (var q = popups.length - 1; q >= 0; q--) {
+      var pu = popups[q];
+      pu.y += pu.vy * dt;
+      pu.vy *= 0.94;
+      pu.life -= dt * 1.1;
+      if (pu.life <= 0) popups.splice(q, 1);
+    }
+
+    // particles
+    stepParticles(dt);
+
+    // platforms drift with the world
+    for (var pf = platforms.length - 1; pf >= 0; pf--) {
+      var pl = platforms[pf];
+      pl.x -= speed * dt;
+      if (pl.x + pl.w < -10) platforms.splice(pf, 1);
+    }
+    // decorative sunbursts embedded in the rails — pure scenery, no collision
+    for (var dc = decors.length - 1; dc >= 0; dc--) {
+      var dd = decors[dc];
+      dd.x -= speed * dt * 0.82;    // slight parallax so they sit "behind" play
+      if (dd.x + dd.r < -20) decors.splice(dc, 1);
+    }
+    placePlayer(dt);
+    // Resting against a spiked face of a platform is fatal. The opposite face is
+    // always safe, so a spiked platform removes an option rather than trapping you.
+    var standing = platformAt(player.x);
+    if (standing) {
+      var onTop = (player.level === 1 && player.onFloor);
+      var onUnder = (player.level === 0 && !player.onFloor);
+      var face = standing.spikes;                    // whole-face fallback
+      if (standing.segs) {                           // per-segment spikes
+        face = 0;
+        for (var sg = 0; sg < standing.segs.length; sg++) {
+          var seg = standing.segs[sg];
+          if (player.x + player.size > seg.a && player.x < seg.b) { face = seg.sp; break; }
+        }
+      }
+      // face: 1 = top lethal, 2 = underside lethal, 3 = both (nose section only,
+      // where the rails are open so you are never forced onto the slab)
+      if (((face === 1 || face === 3) && onTop) ||
+          ((face === 2 || face === 3) && onUnder)) return die();
+    }
+
+    // move obstacles
+    for (var i = obstacles.length - 1; i >= 0; i--) {
+      var o = obstacles[i];
+      o.x -= speed * dt;
+      o.rot += dt;
+      if (o.x + o.w < -10) { obstacles.splice(i, 1); continue; }
+      var oy = o.ceil ? CEIL : GROUND - o.h;
+      // The rotor is round, so it gets a round hitbox -- a box round a disc would
+      // kill you in the four corners where there is visibly nothing.
+      if (o.type === "rotor" || o.type === "saw") {
+        var sr = o.h / 2, scx = o.x + o.w / 2, scy = o.ceil ? CEIL + sr : GROUND - sr;
+        var nx = Math.max(player.x, Math.min(scx, player.x + player.size));
+        var ny = Math.max(player.y, Math.min(scy, player.y + player.size));
+        var ddx = scx - nx, ddy = scy - ny;
+        if (ddx * ddx + ddy * ddy < sr * sr * 0.88) return die();
+        continue;
+      }
+      // A wedge is a triangle, so a box would kill you in the two empty corners
+      // beside the apex. Measure the triangle's actual width where the square
+      // overlaps it: for a triangle that is the widest point of the overlap,
+      // which is the end nearest the base.
+      if (o.type === "wedge") {
+        var top = Math.max(player.y, o.ceil ? CEIL : GROUND - o.h);
+        var bot = Math.min(player.y + player.size, o.ceil ? CEIL + o.h : GROUND);
+        if (top >= bot) continue;                       // no vertical overlap at all
+        var near = o.ceil ? top : bot;                  // the end closest to the base
+        var frac = o.ceil ? (CEIL + o.h - near) / o.h : (near - (GROUND - o.h)) / o.h;
+        var hw = (o.w / 2) * Math.max(0, Math.min(1, frac));
+        var wcx = o.x + o.w / 2;
+        if (player.x < wcx + hw && player.x + player.size > wcx - hw) return die();
+        continue;
+      }
+      // Every other hazard fills its box, so the hitbox matches the drawing. Keep
+      // a sliver of forgiveness so clipping the corner of a tooth isn't fatal.
+      var inset = Math.min(4, o.w * 0.09);
+      if (aabb(player.x, player.y, player.size, player.size,
+               o.x + inset, oy, o.w - inset * 2, o.h)) {
+        return die();
+      }
+    }
+    // the wall at the end of the level -- reaching it is the finish
+    if (finishGate) {
+      if (!finishGate.parked) {
+        finishGate.x -= speed * dt;
+        if (finishGate.x <= FINISH_PARK) { finishGate.x = FINISH_PARK; finishGate.parked = true; }
+      } else {
+        player.x += runSpeed * dt;
+      }
+      if (player.x + player.size >= finishGate.x) return beginWin();
+    }
+    // coins
+    for (var j = coins.length - 1; j >= 0; j--) {
+      var c = coins[j];
+      c.x -= speed * dt;
+      if (c.x + c.r < -10) { coins.splice(j, 1); continue; }
+      if (!c.got && aabb(player.x, player.y, player.size, player.size, c.x - c.r, c.y - c.r, c.r * 2, c.r * 2)) {
+        c.got = true; coinCount += c.val;
+        if (c.red) { sfx.rare(); burst(c.x, c.y, "#ff3b5c", 22, 7); shake = Math.max(shake, 0.5); }
+        else       { sfx.coin(); burst(c.x, c.y, "#ffd35c", 12, 5); shake = Math.max(shake, 0.25); }
+        // If a label is still floating nearby, lift this one clear of it so the
+        // two never overlap into an unreadable smear.
+        var py = c.y;
+        for (var z = 0; z < popups.length; z++) {
+          if (Math.abs(popups[z].x - c.x) < 150 && Math.abs(popups[z].y - py) < 30) py -= 30;
+        }
+        popups.push({ x: c.x, y: py, vy: c.red ? -85 : -70, life: c.red ? 1.35 : 1,
+                      text: "+" + c.val + (c.val > 1 ? " TOKENS" : " TOKEN"),
+                      color: c.red ? "#ff8095" : "#ffe08a",
+                      glow:  c.red ? "#ff3b5c" : "#ffd35c",
+                      big:   !!c.red });
+        coins.splice(j, 1);
+      }
+    }
+    spawn(dt);
+    // WORLD mode finishes when the authored level is spent AND everything from it
+    // has scrolled past the player — that trailing run-out is the finish line.
+    // The wall is the finish now. This only catches the case where one was never
+    // built -- otherwise it would fire early, since obstacles clear before it lands.
+    if (worldMode && customDone && !finishGate && obstacles.length === 0) { return levelDone(); }
+    updateHUD();
+  }
+
+  function score() { return Math.floor(distance / 100) + coinCount * 5; }
+
+  function die() {
+    state = STATE.DEAD;
+    shake = 1;
+    burst(player.x + player.size / 2, player.y + player.size / 2, TH ? TH.player : "#ff2ea6", 26, 7);
+    sfx.dead();
+    sdkGameplayStop();
+    deathCount++;
+    if (worldMode) recordLevel(levelPct());
+    bankTokens(coinCount * TOKEN_RATE);   // what you picked up is yours to spend
+
+    var finalS = score();
+    if (finalS > best) { best = finalS; try { store.set("vaultflip_best", String(best)); } catch (e) {} }
+
+    // Captured now, not read later: showOver can be deferred behind an ad, and
+    // worldMode may have moved on by the time it actually runs.
+    var inLevel = worldMode;
+    var showOver = function () {
+      document.getElementById("finalScore").textContent = finalS;
+      document.getElementById("finalCoins").textContent = coinCount;
+      document.getElementById("overBest").textContent = best;
+      // Revive offer: once per run, only if the run was worth reviving, and never
+      // in a level -- a level is a fixed thing you either got through or did not,
+      // so buying your way past the hard part would make clearing it meaningless.
+      var reviveBtn = document.getElementById("reviveBtn");
+      if (!inLevel && !usedReviveThisRun && finalS >= 20) reviveBtn.classList.remove("hidden");
+      else reviveBtn.classList.add("hidden");
+      show("over");
+      showChrome(false);
+    };
+
+    if (deathCount >= AD_MIN_DEATHS && Date.now() - lastAdAt >= AD_MIN_GAP) {
+      lastAdAt = Date.now();
+      audio.adMuted = true;
+      requestAd("midgame", function () { audio.adMuted = true; }, function () { audio.adMuted = false; showOver(); });
+    } else {
+      showOver();
+    }
+  }
+
+  function revive() {
+    usedReviveThisRun = true;
+    document.getElementById("reviveBtn").classList.add("hidden");
+    lastAdAt = Date.now();      // they just watched one; do not follow it with another
+    audio.adMuted = true;
+    requestAd("rewarded",
+      function () { audio.adMuted = true; },
+      function () {
+        audio.adMuted = false;
+        // Clear the area around the player so revive is fair.
+        obstacles = obstacles.filter(function (o) { return o.x > player.x + W * 0.5; });
+        platforms = platforms.filter(function (p) { return p.x > player.x + W * 0.5; });
+        sinceObstacle = 0;
+        state = STATE.PLAY;
+        show(null);
+        showChrome(true);
+        last = 0;
+        sdkGameplayStart();
+      });
+  }
+
+  // ---------- Render ----------
+  // The whole world heats up as the run gets harder: cool blue at the start,
+  // hot pink with gold rails deep in. It is the difficulty made visible, so a
+  // player can feel the escalation without reading a number.
+  function mixArr(a, b, t) {
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  }
+  function rgb(c, alpha) {
+    var s = Math.round(c[0]) + "," + Math.round(c[1]) + "," + Math.round(c[2]);
+    return alpha == null ? "rgb(" + s + ")" : "rgba(" + s + "," + alpha + ")";
+  }
+  function mix(a, b, t) { return rgb(mixArr(a, b, t)); }
+  // Three stages, not two: cool blue for the opening, hot pink through the
+  // middle, then a final molten stage nobody sees until they have survived a
+  // long way in. The player colour is chosen per stage to stay legible against
+  // whatever the hazards have turned into.
+  var COOL = { bg:[10,10,20],  bar1:[18,32,58], bar2:[26,43,77],
+               rail:[35,213,255], obs:[46,230,255], grid:[35,80,140], player:[255,46,166] };
+  var HOT  = { bg:[26,6,22],   bar1:[58,10,44], bar2:[86,16,62],
+               rail:[255,211,92], obs:[255,58,170], grid:[150,40,110], player:[120,255,215] };
+  var MOLTEN = { bg:[16,5,7],  bar1:[64,20,10], bar2:[104,34,14],
+               rail:[255,246,214], obs:[255,124,36], grid:[168,84,40], player:[90,226,255] };
+  var VOID = { bg:[9,4,20],    bar1:[32,14,68], bar2:[52,24,104],
+               rail:[236,230,255], obs:[170,94,255], grid:[96,62,168], player:[255,214,80] };
+  var TOXIC = { bg:[6,18,9],   bar1:[16,54,20], bar2:[26,86,32],
+               rail:[214,255,196], obs:[142,255,62], grid:[70,150,60], player:[255,80,200] };
+  // Hot pink structures on dark crimson with a cyan player accent — the late
+  // game leans into this look, everything blooming hard.
+  var CRIMSON = { bg:[22,3,13], bar1:[84,8,42], bar2:[132,14,64],
+               rail:[255,138,214], obs:[255,44,152], grid:[170,40,105], player:[120,244,255] };
+  var WHITEOUT = { bg:[3,4,8], bar1:[52,60,78], bar2:[86,98,124],
+               rail:[150,190,255], obs:[240,248,255], grid:[120,140,180], player:[255,96,40] };
+
+  // Colour is driven by SCORE, not distance, so each stage is something you can
+  // aim at. Steps of 150 the whole way up, then a long 500-point climb to the
+  // final whiteout — that last one is meant to be rare.
+  var STAGES = [ { at: 0,   c: COOL },
+                 { at: 150, c: HOT },
+                 { at: 300, c: MOLTEN },
+                 { at: 450, c: VOID },
+                 { at: 600, c: TOXIC },
+                 { at: 750, c: CRIMSON },
+                 { at: 1250, c: WHITEOUT } ];
+  var TH = null;
+  function updateTheme() {
+    var s = score(), last = STAGES.length - 1;
+    var a = STAGES[last].c, b = STAGES[last].c, k = 0;
+    for (var i = 0; i < last; i++) {
+      if (s < STAGES[i + 1].at) {
+        a = STAGES[i].c; b = STAGES[i + 1].c;
+        k = (s - STAGES[i].at) / (STAGES[i + 1].at - STAGES[i].at);
+        break;
+      }
+    }
+    // Keep the raw arrays too — the background layers blend further from these.
+    var _bg = mixArr(a.bg, b.bg, k), _obs = mixArr(a.obs, b.obs, k),
+        _rail = mixArr(a.rail, b.rail, k);
+    TH = { _bg: _bg, _obs: _obs, _rail: _rail,
+           // Bloom builds as the run gets harder — the late stages glow hard.
+           glow: 16 + 22 * diffFactor(),
+           bg: rgb(_bg),
+           bar1: mix(a.bar1, b.bar1, k),
+           bar2: mix(a.bar2, b.bar2, k),
+           rail: rgb(_rail),
+           obs: rgb(_obs),
+           grid: mix(a.grid, b.grid, k),
+           player: mix(a.player, b.player, k) };
+  }
+
+  // ---------- Parallax skyline ----------
+  // Two jagged ridges drift behind the playfield at different speeds. They are
+  // tinted from the live palette, so the whole world turns over together as the
+  // difficulty climbs. Regenerated per run, so no two runs share a skyline.
+  var bgLayers = null;
+  function buildLayers() {
+    bgLayers = [];
+    var cfg = [ { n: 13, amp: 0.30, base: 0.60, sp: 0.09, a: 0.30, tint: 0.16 },
+                { n: 8,  amp: 0.44, base: 0.86, sp: 0.20, a: 0.45, tint: 0.26 } ];
+    for (var l = 0; l < cfg.length; l++) {
+      var c = cfg[l], pts = [];
+      for (var i = 0; i < c.n; i++) pts.push(Math.random());
+      pts.push(pts[0]);            // seam matches so the ridge tiles cleanly
+      bgLayers.push({ pts: pts, cfg: c });
+    }
+  }
+  function drawLayers() {
+    if (!bgLayers) return;
+    var band = GROUND - CEIL;
+    for (var l = 0; l < bgLayers.length; l++) {
+      var L = bgLayers[l], c = L.cfg, span = W;
+      var off = -((distance * c.sp) % span);
+      ctx.save();
+      ctx.globalAlpha = c.a;
+      ctx.fillStyle = rgb(mixArr(TH._bg, TH._obs, c.tint));
+      ctx.beginPath();
+      ctx.moveTo(off - span, GROUND);
+      for (var rep = -1; rep <= 1; rep++) {
+        for (var i = 0; i <= c.n; i++) {
+          var x = off + rep * span + (i / c.n) * span;
+          var y = CEIL + band * (c.base - L.pts[i] * c.amp);
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.lineTo(off + 2 * span, GROUND);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawBg() {
+    // 1. Vertical wash — a touch lighter toward the horizon than at the edges.
+    var sky = ctx.createLinearGradient(0, CEIL, 0, GROUND);
+    sky.addColorStop(0, TH.bg);
+    sky.addColorStop(0.55, rgb(mixArr(TH._bg, TH._obs, 0.10)));
+    sky.addColorStop(1, TH.bg);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // 2. Atmospheric bloom sitting low in the frame, in the hazard colour.
+    var cx = W * 0.5, cy = CEIL + (GROUND - CEIL) * 0.78;
+    var glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.62);
+    glow.addColorStop(0, rgb(TH._obs, 0.16));
+    glow.addColorStop(0.5, rgb(TH._obs, 0.05));
+    glow.addColorStop(1, rgb(TH._obs, 0));
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, CEIL, W, GROUND - CEIL);
+
+    // 3. Parallax hills, low against the floor.
+    drawLayers();
+
+    // 4. Sunbursts sitting ON the rail line. Drawn BEFORE the floor/ceiling bars
+    //    so the bars bury the half that is "in the ground" — the spikes and glow
+    //    rise out of the surface and the rest is swallowed by it.
+    for (var di = 0; di < decors.length; di++) {
+      var s = decors[di];
+      if (s.kind === "tile") {
+        // Floating scenery tile: dim, hollow, no glow — reads as background.
+        ctx.save();
+        ctx.globalAlpha = 0.30;
+        ctx.fillStyle = rgb(mixArr(TH._bg, TH._obs, 0.30));
+        ctx.fillRect(s.x, s.y, s.r, s.r);
+        ctx.strokeStyle = rgb(TH._obs, 0.45);
+        ctx.lineWidth = 2;
+        ctx.strokeRect(s.x + 1, s.y + 1, s.r - 2, s.r - 2);
+        ctx.restore();
+        continue;
+      }
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.rot);
+      var rg = ctx.createRadialGradient(0, 0, 0, 0, 0, s.r);
+      rg.addColorStop(0,    rgb(TH._rail, 0.50));
+      rg.addColorStop(0.38, rgb(TH._obs, 0.22));
+      rg.addColorStop(1,    rgb(TH._obs, 0));
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      var n = s.pts * 2;
+      for (var k = 0; k < n; k++) {
+        var a = (k / n) * Math.PI * 2;
+        var rr = (k % 2 === 0) ? s.r : s.r * 0.56;
+        var xx = Math.cos(a) * rr, yy = Math.sin(a) * rr;
+        if (k === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    // floor & ceiling bars
+    var grd = ctx.createLinearGradient(0, 0, W, 0);
+    grd.addColorStop(0, TH.bar1); grd.addColorStop(1, TH.bar2);
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, CEIL);
+    ctx.fillRect(0, GROUND, W, H - GROUND);
+    // Rails glow harder as the run heats up, matching the blocks.
+    ctx.save();
+    ctx.shadowColor = TH.rail; ctx.shadowBlur = TH.glow * 0.8;
+    ctx.fillStyle = TH.rail;
+    ctx.fillRect(0, CEIL - 3, W, 3);
+    ctx.fillRect(0, GROUND, W, 3);
+    ctx.restore();
+  }
+
+  function drawPlayer() {
+    var s = player.size, x = player.x, y = player.y;
+    var squash = flipAnim > 0 ? 1 + flipAnim * 0.25 : 1;
+    ctx.save();
+    // The player shifts the opposite way to the hazards, so it never blends into
+    // them once the world turns pink.
+    var skin = skinColour() || TH.player;
+    ctx.shadowColor = skin; ctx.shadowBlur = 18;
+    var w = s / squash, h = s * squash;
+    paintSkin(ctx, equipped, x + (s - w) / 2, player.onFloor ? y + (s - h) : y, w, h, TH.player);
+    ctx.restore();
+  }
+
+  // Every hazard is the same blue block with a row of spikes along the edge that
+  // faces the player. The spikes are drawn INSIDE the obstacle's height so the
+  // silhouette matches the hitbox exactly — nothing sticks out that can't hurt
+  // you, and nothing hurts you that isn't drawn.
+  // The end of the level: a single bright line across the corridor, white so it is
+  // never mistaken for the cyan blocks or the cyan rails. Everything to the right
+  // of it is blanked out -- past the line there is no more level, so none is drawn.
+  function drawFinish(g) {
+    var y = CEIL - 3, h = (GROUND - CEIL) + 6;
+    // blank first: past the wall there is no more level, so none is drawn
+    if (g.x < W) {
+      ctx.save();
+      ctx.fillStyle = "#05070d";
+      ctx.fillRect(g.x, y, W - g.x, h);
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.shadowColor = "#6ffcb5";
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = "#6ffcb5";
+    ctx.fillRect(g.x, y, g.w, h);
+    // a lit face on the side you arrive from
+    ctx.fillStyle = "#dfffef";
+    ctx.fillRect(g.x, y, 3, h);
+    ctx.restore();
+  }
+
+  // A row of irregular teeth along the corridor-facing edge of a block. The teeth
+  // are carved OUT of the block's height, never added on top of it, so the drawn
+  // shape always sits inside the hitbox — what kills you is never bigger than what
+  // you can see. Widths and heights come from the block's own seed, so a given
+  // block's profile is fixed and never shimmers frame to frame.
+  function drawTeeth(x, w, baseY, tipY, seed) {
+    var rnd = seededRandom(Math.floor(seed * 100000) + 1);
+    var px = x, span = tipY - baseY;
+    ctx.beginPath();
+    ctx.moveTo(x, baseY);
+    while (px < x + w - 0.5) {
+      var tw = Math.min(x + w - px, 8 + rnd() * 14);
+      var frac = 0.42 + rnd() * 0.58;          // ragged: some teeth barely rise
+      ctx.lineTo(px + tw / 2, baseY + span * frac);
+      ctx.lineTo(px + tw, baseY);
+      px += tw;
+    }
+    ctx.lineTo(x + w, baseY);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Toothed saw disc: rim of teeth, dark hub, bright diamond pip.
+  function drawSaw(o) {
+    var r = o.h / 2, cx = o.x + o.w / 2, cy = o.ceil ? CEIL + r : GROUND - r;
+    var n = 12, i, a;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(o.rot * 2.1);
+    ctx.shadowColor = TH.obs; ctx.shadowBlur = TH.glow;
+    ctx.fillStyle = TH.obs;
+    ctx.beginPath();
+    for (i = 0; i < n; i++) {
+      a = (i / n) * Math.PI * 2;
+      var am = ((i + 0.5) / n) * Math.PI * 2;
+      if (i === 0) ctx.moveTo(Math.cos(a) * r * 0.76, Math.sin(a) * r * 0.76);
+      else ctx.lineTo(Math.cos(a) * r * 0.76, Math.sin(a) * r * 0.76);
+      ctx.lineTo(Math.cos(am) * r, Math.sin(am) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // hub and pip do not spin -- they read as the fixed bolt the disc turns on
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.fillStyle = TH.bg;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.40, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = rgb(mixArr(TH._obs, [255, 255, 255], 0.55));
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-r * 0.15, -r * 0.15, r * 0.30, r * 0.30);
+    ctx.restore();
+  }
+
+  // Vault wheel: a smooth spoked rim with square bolts, the sort of handle on a
+  // safe door. Turning machinery rather than a cutting edge, so the two round
+  // hazards read as clearly different objects at a glance.
+  function drawRotor(o) {
+    var r = o.h / 2, cx = o.x + o.w / 2, cy = o.ceil ? CEIL + r : GROUND - r;
+    var rim = r * 0.84, i, a;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(o.rot * 1.5);
+    ctx.shadowColor = TH.obs; ctx.shadowBlur = TH.glow;
+    ctx.strokeStyle = TH.obs;
+    ctx.fillStyle = TH.obs;
+    // rim
+    ctx.lineWidth = Math.max(4, r * 0.20);
+    ctx.beginPath();
+    ctx.arc(0, 0, rim, 0, Math.PI * 2);
+    ctx.stroke();
+    // six spokes out to the rim
+    ctx.lineWidth = Math.max(3, r * 0.15);
+    for (i = 0; i < 6; i++) {
+      a = i * Math.PI / 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * rim, Math.sin(a) * rim);
+      ctx.stroke();
+    }
+    // square bolts between the spokes -- the same cubes everything else is made of
+    for (i = 0; i < 6; i++) {
+      a = i * Math.PI / 3 + Math.PI / 6;
+      ctx.save();
+      ctx.translate(Math.cos(a) * rim, Math.sin(a) * rim);
+      ctx.rotate(a);
+      ctx.fillRect(-r * 0.14, -r * 0.14, r * 0.28, r * 0.28);
+      ctx.restore();
+    }
+    ctx.restore();
+    // hub does not spin -- it reads as the fixed post the wheel turns on
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.fillStyle = TH.bg;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.30, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = rgb(mixArr(TH._obs, [255, 255, 255], 0.55));
+    ctx.lineWidth = Math.max(2, r * 0.09);
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.30, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // A bed of spikes: a solid base with a long run of even teeth along it. Unlike
+  // the ragged teeth on a block these are uniform, which is what makes a strip
+  // read as one continuous hazard rather than as a row of separate blocks.
+  function drawStrip(o) {
+    var oy = o.ceil ? CEIL : GROUND - o.h;
+    var base = o.h * 0.45, tooth = o.h - base;
+    var baseY = o.ceil ? oy + base : oy + tooth;
+    ctx.save();
+    ctx.shadowColor = TH.obs; ctx.shadowBlur = TH.glow;
+    ctx.fillStyle = TH.obs;
+    ctx.fillRect(o.x, o.ceil ? oy : baseY, o.w, base);
+    // even teeth, sized to fit a whole number across the strip
+    var want = 15, n = Math.max(3, Math.round(o.w / want)), tw = o.w / n;
+    var dir = o.ceil ? 1 : -1;
+    ctx.beginPath();
+    for (var i = 0; i < n; i++) {
+      var px = o.x + i * tw;
+      ctx.moveTo(px, baseY);
+      ctx.lineTo(px + tw / 2, baseY + dir * tooth);
+      ctx.lineTo(px + tw, baseY);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // A triangle standing on the rail. Narrow and tall it reads as a single big
+  // spike; wide and shallow it reads as a ramp. Same primitive either way.
+  function drawWedge(o) {
+    var cx = o.x + o.w / 2;
+    var baseY = o.ceil ? CEIL : GROUND;
+    var apexY = o.ceil ? CEIL + o.h : GROUND - o.h;
+    ctx.save();
+    ctx.shadowColor = TH.obs; ctx.shadowBlur = TH.glow;
+    ctx.fillStyle = TH.obs;
+    ctx.beginPath();
+    ctx.moveTo(o.x, baseY);
+    ctx.lineTo(cx, apexY);
+    ctx.lineTo(o.x + o.w, baseY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // a lit edge down the face you arrive at, so the slope reads against the dark
+    ctx.save();
+    ctx.strokeStyle = rgb(mixArr(TH._obs, [255, 255, 255], 0.45));
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(o.x, baseY);
+    ctx.lineTo(cx, apexY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawObstacle(o) {
+    if (o.type === "rotor") return drawRotor(o);
+    if (o.type === "saw") return drawSaw(o);
+    if (o.type === "strip") return drawStrip(o);
+    if (o.type === "wedge") return drawWedge(o);
+    var oy = o.ceil ? CEIL : GROUND - o.h;
+    // Teeth bite into the top 30% of the block, capped so tall blocks don't get
+    // absurd spikes and short ones still get a readable edge.
+    var depth = Math.max(5, Math.min(o.h * 0.30, 15));
+    var baseY = o.ceil ? oy + o.h - depth : oy + depth;
+    var tipY  = o.ceil ? oy + o.h : oy;
+    ctx.save();
+    ctx.shadowColor = TH.obs; ctx.shadowBlur = TH.glow;
+    ctx.fillStyle = TH.obs;
+    // body stops short of the edge; the teeth make up the difference
+    ctx.fillRect(o.x, o.ceil ? oy : baseY, o.w, o.h - depth);
+    drawTeeth(o.x, o.w, baseY, tipY, o.seed);
+    ctx.restore();
+    // a brighter lip along the base of the teeth, so the silhouette still reads
+    ctx.fillStyle = rgb(mixArr(TH._obs, [255, 255, 255], 0.45));
+    ctx.fillRect(o.x, o.ceil ? baseY - 3 : baseY, o.w, 3);
+  }
+
+  function draw() {
+    updateTheme();
+    var sx = 0, sy = 0;
+    if (shake > 0) { sx = (Math.random() - 0.5) * 10 * shake; sy = (Math.random() - 0.5) * 10 * shake; }
+    ctx.save();
+    ctx.translate(sx, sy);
+    drawBg();
+    // Platforms use the RAIL colour, never the hazard colour — they are surfaces
+    // to stand on, and must never be mistaken for something that kills you.
+    for (var pi = 0; pi < platforms.length; pi++) {
+      var pl = platforms[pi];
+      ctx.save();
+      ctx.shadowColor = TH.rail; ctx.shadowBlur = 12;
+      ctx.fillStyle = TH.rail;
+      // One uniform slab, approach included — the run-up is still standable, so
+      // drawing it any thinner just makes part of a solid surface look flimsy.
+      ctx.fillStyle = TH.rail;
+      ctx.fillRect(pl.x, pl.y, pl.w, pl.th);
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.fillRect(pl.x, pl.y, pl.w, 2);
+      ctx.restore();
+      // Spiked face is drawn in the HAZARD colour, not the rail colour, so the
+      // deadly side is unmistakable at a glance.
+      // Spiked bands along the slab, drawn per segment in the HAZARD colour so
+      // the lethal stretches are obvious against the rail-coloured platform.
+      var bands = pl.segs || (pl.spikes ? [{ a: pl.x, b: pl.x + pl.w, sp: pl.spikes }] : []);
+      for (var bi = 0; bi < bands.length; bi++) {
+        var bd = bands[bi];
+        if (!bd.sp) continue;
+        var sh = 13, bw = bd.b - bd.a;
+        var tn = Math.max(2, Math.round(bw / 15));
+        var twp = bw / tn;
+        // sp 3 draws teeth on both faces
+        var faces = bd.sp === 3 ? [1, 2] : [bd.sp];
+        ctx.save();
+        ctx.shadowColor = TH.obs; ctx.shadowBlur = 14;
+        ctx.fillStyle = TH.obs;
+        for (var fi = 0; fi < faces.length; fi++) {
+          var bY = faces[fi] === 1 ? pl.y : pl.y + pl.th;
+          var dr = faces[fi] === 1 ? -1 : 1;
+          ctx.beginPath();
+          for (var ti = 0; ti < tn; ti++) {
+            var xs = bd.a + ti * twp;
+            ctx.moveTo(xs, bY);
+            ctx.lineTo(xs + twp / 2, bY + dr * sh);
+            ctx.lineTo(xs + twp, bY);
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+    // obstacles
+    for (var i = 0; i < obstacles.length; i++) drawObstacle(obstacles[i]);
+    // finish wall
+    if (finishGate) drawFinish(finishGate);
+    // coins
+    for (var j = 0; j < coins.length; j++) {
+      var c = coins[j];
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      if (c.red) {
+        // Rare token: bigger, hotter, slowly spinning, with a pale core so it
+        // never reads as just another gold one at a glance.
+        ctx.rotate(Math.PI / 4 + distance * 0.004);
+        ctx.shadowColor = "#ff3b5c"; ctx.shadowBlur = 26;
+        ctx.fillStyle = "#ff3b5c";
+        ctx.fillRect(-c.r, -c.r, c.r * 2, c.r * 2);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ff8095";
+        ctx.fillRect(-c.r * 0.58, -c.r * 0.58, c.r * 1.16, c.r * 1.16);
+        ctx.fillStyle = "#fff0f3";
+        ctx.fillRect(-c.r * 0.22, -c.r * 0.22, c.r * 0.44, c.r * 0.44);
+      } else {
+        ctx.rotate(Math.PI / 4);
+        ctx.shadowColor = "#ffd35c"; ctx.shadowBlur = 14;
+        ctx.fillStyle = "#ffd35c";
+        ctx.fillRect(-c.r, -c.r, c.r * 2, c.r * 2);
+      }
+      ctx.restore();
+    }
+    // particles
+    for (var k = 0; k < particles.length; k++) {
+      var pt = particles[k];
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, pt.life);
+      ctx.fillStyle = pt.color;
+      ctx.shadowColor = pt.color; ctx.shadowBlur = 10;
+      ctx.fillRect(pt.x, pt.y, pt.size, pt.size);
+      ctx.restore();
+    }
+    // Teleport streak, drawn under the player so the body stays crisp on top.
+    if (trail && trail.life > 0 && state === STATE.PLAY) {
+      var ty0 = Math.min(trail.from, player.y), ty1 = Math.max(trail.from, player.y) + player.size;
+      var tg = ctx.createLinearGradient(0, ty0, 0, ty1);
+      tg.addColorStop(0,   rgb(TH._rail, 0));
+      tg.addColorStop(0.5, rgb(TH._rail, 0.55 * trail.life));
+      tg.addColorStop(1,   rgb(TH._rail, 0));
+      ctx.save();
+      ctx.fillStyle = tg;
+      var tw2 = trail.w * (0.30 + 0.45 * trail.life);
+      ctx.fillRect(trail.x + (trail.w - tw2) / 2, ty0, tw2, ty1 - ty0);
+      ctx.restore();
+    }
+    if (state === STATE.PLAY || state === STATE.DEAD) drawPlayer();
+
+    // "+1 TOKEN" labels float up from where the token was picked up
+    var fs = Math.max(15, Math.min(28, W * 0.024));
+    ctx.textAlign = "center";
+    for (var q = 0; q < popups.length; q++) {
+      var pu = popups[q];
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, pu.life));
+      ctx.font = "800 " + (pu.big ? fs * 1.4 : fs) + "px system-ui, sans-serif";
+      ctx.shadowColor = pu.glow || "#ffd35c"; ctx.shadowBlur = pu.big ? 20 : 12;
+      ctx.fillStyle = pu.color || "#ffe08a";
+      ctx.fillText(pu.text, pu.x, pu.y);
+      ctx.restore();
+    }
+    if (state === STATE.WIN) drawWin();
+    ctx.restore();
+  }
+
+  // ---------- HUD / panels ----------
+  function updateHUD() {
+    if (worldMode) {
+      var p = levelPct();
+      document.getElementById("progFill").style.width = p + "%";
+      document.getElementById("progPct").textContent = p + "%";
+      return;
+    }
+    document.getElementById("hudScore").textContent = score();
+    document.getElementById("hudCoins").textContent = coinCount;
+  }
+  function show(panel) {
+    document.getElementById("menu").classList.toggle("hidden", panel !== "menu");
+    document.getElementById("over").classList.toggle("hidden", panel !== "over");
+    document.getElementById("levels").classList.toggle("hidden", panel !== "levels");
+    document.getElementById("ask").classList.toggle("hidden", panel !== "ask");
+    document.getElementById("shop").classList.toggle("hidden", panel !== "shop");
+    document.getElementById("reel").classList.toggle("hidden", panel !== "reel");
+    document.getElementById("won").classList.toggle("hidden", panel !== "won");
+
+    document.getElementById("paused").classList.toggle("hidden", panel !== "paused");
+  }
+  function showChrome(on) {
+    // A level shows its progress bar; the endless modes show score and tokens.
+    document.getElementById("hud").classList.toggle("hidden", !on || worldMode);
+    document.getElementById("prog").classList.toggle("hidden", !on || !worldMode);
+    document.getElementById("mute").classList.toggle("hidden", !on);
+    document.getElementById("pause").classList.toggle("hidden", !on);
+  }
+
+  // ---------- Pause ----------
+  function pauseGame() {
+    if (state !== STATE.PLAY) return;
+    state = STATE.PAUSED;
+    audio.adMuted = true;                 // silence while the game is frozen
+    music.stop();
+    document.getElementById("pauseScore").textContent = score();
+    show("paused");
+    sdkGameplayStop();                    // tell the platform play has stopped
+  }
+  function resumeGame() {
+    if (state !== STATE.PAUSED) return;
+    state = STATE.PLAY;
+    audio.adMuted = false;
+    music.start(1);
+    show(null);
+    last = 0;          // drop the stale timestamp so the world doesn't lurch forward
+    sdkGameplayStart();
+  }
+  function togglePause() {
+    if (state === STATE.PLAY) pauseGame();
+    else if (state === STATE.PAUSED) resumeGame();
+  }
+
+  // Boot reads from local storage, because the SDK has not finished initialising
+  // yet. Once it has, the account is the better source -- so read everything
+  // again. Without this a player's cloud save would be written but never loaded,
+  // and a second device would always look brand new.
+  function reloadProgress() {
+    try {
+      var b = parseInt(store.get("vaultflip_best") || "0", 10) || 0;
+      if (b > best) best = b;
+      worldBeat = parseInt(store.get("vaultflip_world") || "0", 10) || worldBeat;
+      bestPct = []; attempts = [];
+      loadRecords("vaultflip_pct", bestPct);
+      loadRecords("vaultflip_att", attempts);
+      loadOverrides();
+      loadMine();
+      loadShop();
+      if (state === STATE.MENU) {
+        document.getElementById("bestArt").textContent = best;
+        document.getElementById("walletArt").textContent = wallet;
+      }
+    } catch (e) {}
+  }
+
+  // ---------- Start / retry / menu ----------
+
+  function startGame() {
+    resetRun();
+    state = STATE.PLAY;
+    show(null);
+    showChrome(true);
+    updateHUD();
+    if (ac() && audio.ctx.state === "suspended") audio.ctx.resume();
+    music.stop(); music.start(1);      // restart the loop so a run opens on the downbeat
+    sdkGameplayStart();
+  }
+  function toMenu() {
+    state = STATE.MENU;
+    music.stop(); music.start(0);      // menus get the sparse version
+    show("menu");
+    document.getElementById("bestArt").textContent = best;   // best score is the Endless card's art
+    document.getElementById("walletArt").textContent = wallet;   // tokens are the Shop card's
+    showChrome(false);
+  }
+
+  // ---------- Input ----------
+  function onTap(e) {
+    if (e && e.target && e.target.tagName === "BUTTON") return; // let buttons work
+    if (state === STATE.PLAY) { if (e) e.preventDefault(); flip(); }
+  }
+  window.addEventListener("pointerdown", onTap, { passive: false });
+  window.addEventListener("keydown", function (e) {
+    if (e.code === "Escape" || e.code === "KeyP") {
+      e.preventDefault();
+      togglePause();
+      return;
+    }
+    if (e.code === "Space" || e.code === "ArrowUp") {
+      e.preventDefault();
+      if (state === STATE.PLAY) flip();
+      else if (state === STATE.PAUSED) resumeGame();
+      else if (state === STATE.MENU) startGame();
+      else if (state === STATE.DEAD) startGame();
+    }
+  });
+
+  // Losing the tab or window should never cost the player a run — freeze it and
+  // let the platform know play has stopped.
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) pauseGame();
+  });
+  window.addEventListener("blur", function () { pauseGame(); });
+
+  // Three real modes. Each one moves the two numbers that actually govern how the
+  // game feels: how fast the world gets, and how long you have to react.
+  var MODES = {
+    normal: { start: 600, max: 1950, acc: 34, react: 0.33 }
+  };
+  function playMode(name) {
+    var m = MODES[name];
+    worldMode = false; customLevel = null;      // the three arcade modes are endless
+    SPEED_START = m.start; SPEED_MAX = m.max; SPEED_ACC = m.acc; REACT = m.react;
+    startGame();
+  }
+  document.getElementById("modeWorld").addEventListener("click", function () {
+    state = STATE.MENU;
+    buildLevelGrid();
+    show("levels");
+  });
+  document.getElementById("askOk").addEventListener("click", function () {
+    var cb = askOnOk, text = document.getElementById("askBox").value;
+    askOnOk = null;
+    if (cb) cb(text.replace(/\s+/g, ""));
+    else show("levels");            // it was only a message, so go back
+  });
+  document.getElementById("askNo").addEventListener("click", function () {
+    askOnOk = null;
+    show("levels");
+  });
+
+  document.getElementById("lvlBack").addEventListener("click", function () { toMenu(); });
+  document.getElementById("wonNext").addEventListener("click", function () {
+    if (worldIdx + 1 < LEVELS.length) startLevel(worldIdx + 1);
+  });
+  document.getElementById("wonMenu").addEventListener("click", function () {
+    state = STATE.MENU; buildLevelGrid(); show("levels");
+  });
+  document.getElementById("modeNormal").addEventListener("click", function () { playMode("normal"); });
+  document.getElementById("modeShop").addEventListener("click", function () {
+    buildShop();
+    show("shop");
+  });
+  document.getElementById("shopBack").addEventListener("click", function () { toMenu(); });
+  document.getElementById("tabCrates").addEventListener("click", function () {
+    shopTab = "crates"; buildShop();
+  });
+  document.getElementById("tabKit").addEventListener("click", function () {
+    shopTab = "kit"; buildShop();
+  });
+  document.getElementById("reelDone").addEventListener("click", function () {
+    // Land in the collection, so a new skin is right there to put on.
+    shopTab = "kit"; buildShop(); show("shop");
+  });
+
+
+
+  document.getElementById("soundBtn").addEventListener("click", function () {
+    audio.muted = !audio.muted;
+    applyMute();
+    if (!soundOff()) { music.stop(); music.start(state === STATE.PLAY ? 1 : 0); }
+    refreshSoundLabels();
+  });
+  document.getElementById("howBtn").addEventListener("click", function () {
+    var t = document.getElementById("howText");
+    t.style.visibility = (t.style.visibility === "hidden") ? "visible" : "hidden";
+  });
+  document.getElementById("retryBtn").addEventListener("click", startGame);
+  document.getElementById("menuBtn").addEventListener("click", toMenu);
+  document.getElementById("reviveBtn").addEventListener("click", revive);
+  document.getElementById("pause").addEventListener("click", pauseGame);
+  document.getElementById("resumeBtn").addEventListener("click", resumeGame);
+  document.getElementById("pauseMenuBtn").addEventListener("click", function () {
+    audio.adMuted = false;
+    sdkGameplayStop();
+    toMenu();
+  });
+  document.getElementById("mute").addEventListener("click", function () {
+    audio.muted = !audio.muted;
+    applyMute();
+    refreshSoundLabels();
+  });
+
+  // ---------- Main loop ----------
+  var last = 0;
+  function loop(ts) {
+    if (!last) last = ts;
+    var dt = Math.min(0.05, (ts - last) / 1000); // clamp for tab-switches
+    last = ts;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Boot ----------
+  resize();
+  layout();
+  resetRun();      // create world arrays so the first draw() has data to render
+  initSDK();
+  buildLevelGrid();      // fills the level buttons and the WORLD card's progress
+  toMenu();
+  requestAnimationFrame(loop);
+})();
+</script>
+<script>addEventListener('keydown',function(e){if(e.key==='Escape'){try{top.location.replace('/quiet.html')}catch(_){location.replace('/quiet.html')}}});</script></body>
+</html>

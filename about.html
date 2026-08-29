@@ -1,0 +1,74 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>About — Nooncade</title>
+<meta name="description" content="About Nooncade.">
+<link rel="canonical" href="https://coolrice5.github.io/about.html">
+<meta property="og:title" content="About — Nooncade"><meta property="og:description" content="About Nooncade.">
+<meta property="og:type" content="website"><meta property="og:url" content="https://coolrice5.github.io/about.html">
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--edge:#2a3240;--ink:#e6edf3;--dim:#8b949e;--accent:#4ea1ff;--accent-ink:#06131f}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1100px;margin:0 auto;padding:0 20px}
+header.top{border-bottom:1px solid var(--edge);background:var(--panel);position:sticky;top:0;z-index:10}
+header.top .wrap{display:flex;align-items:center;gap:16px;height:60px}
+.brand{font-weight:700;font-size:19px;color:var(--ink);letter-spacing:-.2px}
+.brand span{color:var(--accent)}
+nav.top-nav{margin-left:auto;display:flex;gap:18px;font-size:14px}
+nav.top-nav a{color:var(--dim)}nav.top-nav a:hover{color:var(--ink);text-decoration:none}
+.hero{padding:44px 0 30px}
+.hero h1{font-size:clamp(26px,4.5vw,40px);line-height:1.15;letter-spacing:-.5px;margin-bottom:10px}
+.hero p{color:var(--dim);max-width:60ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:18px;padding-bottom:48px}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .15s,transform .15s}
+.card:hover{border-color:var(--accent);transform:translateY(-2px);text-decoration:none}
+.card .thumb{aspect-ratio:16/10;display:grid;place-items:center;font-size:40px;font-weight:800;letter-spacing:-1px;color:#fff}
+.card .body{padding:13px 15px 16px}
+.card h3{font-size:16px;color:var(--ink);margin-bottom:4px}
+.card p{font-size:13px;color:var(--dim);line-height:1.45}
+.stage{background:#000;border:1px solid var(--edge);border-radius:12px;overflow:hidden;margin:22px 0}
+.stage iframe{display:block;width:100%;height:min(72vh,660px);border:0;background:#000}
+.stage-bar{display:flex;align-items:center;gap:12px;padding:9px 14px;background:var(--panel);border-top:1px solid var(--edge);font-size:13px;color:var(--dim)}
+.stage-bar button{margin-left:auto;background:var(--accent);color:var(--accent-ink);border:0;border-radius:7px;padding:7px 15px;font:inherit;font-weight:600;font-size:13px;cursor:pointer}
+.stage-bar button:hover{filter:brightness(1.1)}
+.cols{display:grid;grid-template-columns:1fr;gap:34px;padding-bottom:48px}
+@media(min-width:860px){.cols{grid-template-columns:1fr 300px}}
+.prose h2{font-size:19px;margin:26px 0 9px}.prose h1{font-size:30px;letter-spacing:-.4px;margin-bottom:6px}
+.prose p{color:#c3ccd6;margin-bottom:12px;max-width:70ch}
+.lede{color:var(--dim);font-size:17px;margin-bottom:18px}
+.side h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:11px}
+.side .card{margin-bottom:11px}
+.adslot{background:var(--panel);border:1px dashed var(--edge);border-radius:10px;min-height:100px;display:grid;place-items:center;color:#48505c;font-size:12px;margin-bottom:22px}
+footer.bot{border-top:1px solid var(--edge);padding:26px 0;color:var(--dim);font-size:13px}
+footer.bot .wrap{display:flex;flex-wrap:wrap;gap:14px}footer.bot a{color:var(--dim)}
+.hint{font-size:12px;color:#5b6470;margin-top:6px}
+</style>
+
+</head><body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="/">Nooncade</a>
+  <nav class="top-nav"><a href="/">All games</a><a href="/about.html">About</a></nav>
+</div></header>
+<div class="wrap"><div class="prose" style="padding:40px 0 60px">
+    <h1>About</h1>
+    <p class="lede">Small, fast browser games. No download, no login, no install. Every game loads in seconds on a school Chromebook.</p>
+    <p>Every game here was made by one person and is hosted directly on this site. There is no
+       third-party game feed, no ad SDK inside the games, and no external assets — each game is a
+       single self-contained page that loads in a couple of seconds and then leaves you alone.</p>
+    <h2>Why the games are small</h2>
+    <p>Most browser-game sites load a video ad, a consent dialog and a megabyte of tracking before
+       anything playable appears. On a slow or filtered connection that is where the whole thing
+       stalls. These games skip all of it.</p>
+    <h2>Press Esc</h2>
+    <p>Esc anywhere on the site leaves immediately for a blank page.</p>
+  </div></div>
+<footer class="bot"><div class="wrap">
+  <span>&copy; 2026 Nooncade</span>
+  <a href="/about.html">About</a><a href="/privacy.html">Privacy</a>
+  <span style="margin-left:auto">Press <strong>Esc</strong> to leave quickly</span>
+</div></footer>
+<script>
+addEventListener('keydown',function(e){if(e.key==='Escape'){location.replace('/quiet.html')}});
+</script>
+</body></html>
